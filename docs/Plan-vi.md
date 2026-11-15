@@ -78,7 +78,7 @@ Hệ quả:
 ## Quyết định bổ sung (user trả lời 2026-11-16)
 
 - H.265: bước 2 chỉ thêm trường codec vào bắt tay; encode HEVC làm sau khi H.264 chạy.
-- Gọi ffmpeg: **`FFmpeg.AutoGen` 9.0.x** khớp major với `TqkLibrary.FFmpeg.Lgpl2.Native.Win.x64` 9.0.2 (avcodec-63). Hai gói phải ghim cùng major (AutoGen gắn tên DLL `avcodec-63` và layout struct theo major); nâng ffmpeg thì nâng AutoGen cùng lúc. Bắt đầu bằng đường CPU (`Bitmap` → sws_scale → encoder phần cứng). Nếu cần zero-copy D3D11 → nvenc thì viết thêm DLL C++ sau.
+- Gọi ffmpeg: **DLL C++** (`FocusRemote.Encoder.Native`) đưa texture D3D11 thẳng vào encoder phần cứng (nvenc/qsv/amf, dự phòng `h264_mf`), zero-copy; không dùng `FFmpeg.AutoGen`. Link với `TqkLibrary.FFmpeg.Lgpl2.Native.Win.x64` 9.0.2.
 - License: **LGPL**; chỉ chuyển GPL nếu bắt buộc (vd cần `libx264` làm dự phòng phần mềm).
 - Relay: HTTPS coi như có sẵn. Deploy đa nền tảng (IIS, Docker, Linux); trước mắt **Windows IIS** → Relay không phụ thuộc gì riêng Windows.
 - Id + password: **người dùng tự đặt cả hai**, có nút sinh ngẫu nhiên.
@@ -86,6 +86,7 @@ Hệ quả:
 - Host **có thể chạy admin**; về sau Host thành công cụ remote đa năng từ điện thoại về máy này (thêm chức năng khác) → Protocol chừa chỗ cho kênh mới.
 - Âm thanh: Opus (WebCodecs `AudioDecoder`).
 - Git: nhánh chính **`master`**; mỗi bước làm trên nhánh phụ.
+- **Tự host trong LAN** (user thêm 2026-11-16): Host nhúng sẵn relay + WebViewer (Kestrel) để mở bằng trình duyệt trong LAN, không cần relay ngoài. Vướng: WebCrypto `subtle` và WebCodecs chỉ chạy trong secure context, nên `http://192.168.x.x` không dùng được. Hướng xử lý: Host tự sinh chứng chỉ self-signed và phục vụ HTTPS (người dùng chấp nhận cảnh báo một lần). Không ổn thì dùng app Android cho LAN.
 
 ## Việc còn mở
 
