@@ -1,3 +1,5 @@
+using FocusRemote.Host.Core.Audio;
+using FocusRemote.Host.Core.Audio.Interfaces;
 using FocusRemote.Host.Core.Input;
 using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Logging.Interfaces;
@@ -30,19 +32,22 @@ public sealed class HostSessionManager
     private readonly Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer> _streamerFactory;
     private readonly AuthFailureDelayPolicy _failurePolicy;
     private readonly Func<IInputInjector> _inputInjectorFactory;
+    private readonly Func<CaptureSource, IAudioSink, IAudioStreamer> _audioStreamerFactory;
     private readonly object _lock = new();
     private IViewerLink? _activeLink;
 
     /// <param name="rootKeyProvider">Current 32-byte root key (null = not configured, viewers are refused).</param>
     /// <param name="streamerFactory">Creates the video streamer; null = <see cref="VideoStreamer"/>.</param>
     /// <param name="inputInjectorFactory">Creates one input injector per viewer session; null = <see cref="InputInjector"/> (SendInput).</param>
+    /// <param name="audioStreamerFactory">Creates the audio streamer; null = <see cref="AudioStreamer"/> (WASAPI loopback + Opus).</param>
     public HostSessionManager(
         Func<byte[]?> rootKeyProvider,
         ISourceCatalog catalog,
         IAppLog log,
         Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer>? streamerFactory = null,
         AuthFailureDelayPolicy? failurePolicy = null,
-        Func<IInputInjector>? inputInjectorFactory = null)
+        Func<IInputInjector>? inputInjectorFactory = null,
+        Func<CaptureSource, IAudioSink, IAudioStreamer>? audioStreamerFactory = null)
     {
         _rootKeyProvider = rootKeyProvider;
         _catalog = catalog;
@@ -50,6 +55,7 @@ public sealed class HostSessionManager
         _streamerFactory = streamerFactory ?? ((source, request, sink) => new VideoStreamer(source, request, sink, log));
         _failurePolicy = failurePolicy ?? new AuthFailureDelayPolicy();
         _inputInjectorFactory = inputInjectorFactory ?? (() => new InputInjector(log));
+        _audioStreamerFactory = audioStreamerFactory ?? ((source, sink) => new AudioStreamer(source, sink, log));
     }
 
     /// <summary>Raised with the viewer origin when a viewer authenticates, and with null when it leaves.</summary>
@@ -103,7 +109,7 @@ public sealed class HostSessionManager
 
             _log.Info($"Viewer {link.Origin}: authenticated");
             ViewerChanged?.Invoke(link.Origin);
-            using var viewer = new ViewerSession(link, session, _catalog, _log, _streamerFactory, stats => StreamStatsChanged?.Invoke(stats), _inputInjectorFactory());
+            using var viewer = new ViewerSession(link, session, _catalog, _log, _streamerFactory, stats => StreamStatsChanged?.Invoke(stats), _inputInjectorFactory(), _audioStreamerFactory);
             try
             {
                 await viewer.RunAsync(cancellationToken);

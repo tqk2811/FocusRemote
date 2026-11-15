@@ -1,6 +1,6 @@
 // Real-browser end-to-end test: Relay (or LAN host) + headless host harness + Google Chrome over CDP.
 //
-//   node src/FocusRemote.E2E/browser/run-e2e.mjs --mode relay|lan --out <dir> [--source m:0] [--no-audio]
+//   node src/FocusRemote.E2E/browser/run-e2e.mjs --mode relay|lan --out <dir> [--source m:0|w:<hwnd>|first-window] [--no-audio] [--headful]
 //
 // Needs `dotnet build src/FocusRemote.sln` first. Uses Node's built-in WebSocket as the CDP client (no npm packages).
 // Chrome runs with its own --user-data-dir under --out; only the processes this script started are stopped.
@@ -201,16 +201,18 @@ async function main() {
     await clickSelector(cdp, '#connectButton');
     const stats1 = await waitFor('authenticated + source list', async () => {
       const s = await cdp.eval('__frStats');
-      return s.authenticated && s.sources.includes(opt.source) ? s : null;
+      return s.authenticated && (opt.source === 'first-window' ? s.sources.some((id) => id.startsWith('w:')) : s.sources.includes(opt.source)) ? s : null;
     }, 60000);
     results.checks.authenticated = true;
     results.sources = stats1.sources;
+    const sourceId = opt.source === 'first-window' ? stats1.sources.find((id) => id.startsWith('w:')) : opt.source;
+    results.sourceId = sourceId;
     log('authenticated, sources:', stats1.sources.length);
 
     // Unmute with a real (trusted) click so the AudioContext may start.
     if (wantAudio) await clickSelector(cdp, '#muteButton');
 
-    await clickSelector(cdp, `[data-source-id="${opt.source}"]`);
+    await clickSelector(cdp, `[data-source-id="${sourceId}"]`);
     const stats2 = await waitFor('decoded video frames', async () => {
       const s = await cdp.eval('__frStats');
       return s.videoFramesDrawn >= 10 ? s : null;

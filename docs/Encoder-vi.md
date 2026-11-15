@@ -81,3 +81,10 @@ Kết quả trên máy dev (RTX 4060 Laptop là adapter 0, màn hình 2560×1600
 | `h264_nvenc`, ép đường bộ nhớ hệ thống | không | ~6.6 ms / ~7.4 ms |
 
 `ffprobe` xác nhận: H.264 High, 2560×1600, 150 khung, `color_range=tv`, `color_space=bt709`; keyframe thứ hai (ép ở khung 75) có SPS/PPS phía trước.
+
+## Encoder âm thanh (Opus)
+
+- API C `FrAudioEncoder_*` trong `FocusRemoteEncoder.h` (code ở `FocusRemoteAudioEncoder.cpp`), bọc C# là `OpusAudioEncoder`.
+- Bản FFmpeg LGPL 9.0.2 có `--enable-libopus`: dùng `libopus` (`application=lowdelay`, `frame_duration=20`, `vbr=on`), vào float xen kẽ (`AV_SAMPLE_FMT_FLT`), mặc định 48 kHz stereo 96 kbps. Không mở được thì thử encoder `opus` gốc của FFmpeg (experimental).
+- Mỗi lần gọi: `Send` đúng một khung (`GetFrameSamples` = 960 mẫu mỗi kênh với 20 ms), rồi `Receive` tới khi trả 0. Gói ra là Opus thô (không container), `pts` theo µs.
+- Capture và cách dùng trong Host: xem [Host-vi.md](Host-vi.md#âm-thanh).
