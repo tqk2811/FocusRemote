@@ -87,6 +87,7 @@ Hệ quả:
 - Âm thanh: Opus (WebCodecs `AudioDecoder`).
 - Git: nhánh chính **`master`**; mỗi bước làm trên nhánh phụ.
 - **Tự host trong LAN** (user thêm 2026-11-16): Host nhúng sẵn relay + WebViewer (Kestrel) để mở bằng trình duyệt trong LAN, không cần relay ngoài. Vướng: WebCrypto `subtle` và WebCodecs chỉ chạy trong secure context, nên `http://192.168.x.x` không dùng được. Hướng xử lý: Host tự sinh chứng chỉ self-signed và phục vụ HTTPS (người dùng chấp nhận cảnh báo một lần). Không ổn thì dùng app Android cho LAN.
+  - Chốt (2026-11-16): HTTPS self-signed, cổng mặc định **8443**, Host hiện URL + QR; chạy **cùng lúc** với kết nối relay ngoài (vẫn một viewer tại một thời điểm); LAN vẫn dùng **Id + password** như relay ngoài.
 
 ## Việc còn mở
 
