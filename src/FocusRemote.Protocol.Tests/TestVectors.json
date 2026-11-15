@@ -1,0 +1,79 @@
+{
+  "description": "FocusRemote protocol v1 test vectors (docs/Protocol-vi.md). Generated with WebCrypto (Node), verified by the C# tests. All *Hex fields are lowercase hex; integers inside frames are little-endian. salt = SHA-256(UTF8(\"FocusRemote/v1/salt/\" + id))[0..16]; rootKey = PBKDF2-HMAC-SHA256(UTF8(password), salt, pbkdf2Iterations, 32); okm = HKDF-SHA256(ikm=rootKey, salt=nonceV||nonceH, info=UTF8(sessionInfo), 64); keyH2V = okm[0..32], keyV2H = okm[32..64]. Sealed: plaintext = channel u8 || type u8 || payload; nonce = counter u64 LE || 00000000; AES-256-GCM, AAD = 0x10, tag 16 bytes; frame = 0x10 || counter u64 LE || ciphertext || tag. sealedV2H frames use keyV2H (viewer to host), sealedH2V use keyH2V (host to viewer); each list starts at counter 0 and is consecutive.",
+  "id": "demo-host_01",
+  "password": "correct horse battery",
+  "pbkdf2Iterations": 600000,
+  "sessionInfo": "FocusRemote/v1/session",
+  "saltHex": "299f2397f841939d8222a0640271bfc1",
+  "rootKeyHex": "1dabdbd02ab858f63bad90999c02e465275cade38385ac39a63eccd898489031",
+  "nonceVHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "nonceHHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+  "helloViewerHex": "0101000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "helloHostHex": "0201202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+  "keyH2VHex": "ea8c69030992ddc28633c10d3861d20c5922afb1d651ecf2351166b806c40f04",
+  "keyV2HHex": "27476fba0f2a4894e9836f20ea44ada0948be79ba5f45a3eb69d1e8c739c42bc",
+  "sealedV2H": [
+    {
+      "note": "Control/AuthProbe",
+      "counter": 0,
+      "channel": 0,
+      "type": 1,
+      "payloadHex": "466f63757352656d6f74652f76312f70726f6265",
+      "nonceHex": "000000000000000000000000",
+      "plaintextHex": "0001466f63757352656d6f74652f76312f70726f6265",
+      "frameHex": "100000000000000000f18d58b55f1697addbb485b1d91d23488b2eecacb903f5135a6be582138161c6b239477c3557"
+    },
+    {
+      "note": "Control/Capabilities",
+      "counter": 1,
+      "channel": 0,
+      "type": 3,
+      "payloadHex": "7b22766964656f436f64656373223a5b2268323634225d2c22617564696f436f64656373223a5b226f707573225d7d",
+      "nonceHex": "010000000000000000000000",
+      "plaintextHex": "00037b22766964656f436f64656373223a5b2268323634225d2c22617564696f436f64656373223a5b226f707573225d7d",
+      "frameHex": "100100000000000000ff1cf8526bf5c8c567cfa0fd54f31bd719462eac31d1edaad3ddcb9a1c00474ee8312b6a28f8da561d2593d78dae3b9e16063d2cbc69917db5187af07f9a7cb50f"
+    },
+    {
+      "note": "Input/MouseMove x=32767 y=32768",
+      "counter": 2,
+      "channel": 2,
+      "type": 1,
+      "payloadHex": "ff7f0080",
+      "nonceHex": "020000000000000000000000",
+      "plaintextHex": "0201ff7f0080",
+      "frameHex": "10020000000000000080bc3749714955406faf2685eaaa3d7abf5437c1e262"
+    }
+  ],
+  "sealedH2V": [
+    {
+      "note": "Control/AuthOk",
+      "counter": 0,
+      "channel": 0,
+      "type": 2,
+      "payloadHex": "7b22686f73744e616d65223a225043222c2276657273696f6e223a22312e302e30227d",
+      "nonceHex": "000000000000000000000000",
+      "plaintextHex": "00027b22686f73744e616d65223a225043222c2276657273696f6e223a22312e302e30227d",
+      "frameHex": "100000000000000000090546a6732994fde0c28fcba3afd03b742b366b3efd866a5ab165f5546f069487cc6e7bcb30e5369be277884a9c12412fc85e51d8"
+    },
+    {
+      "note": "Control/Ping timestampMs=1700000000123",
+      "counter": 1,
+      "channel": 0,
+      "type": 32,
+      "payloadHex": "7b68e5cf8b010000",
+      "nonceHex": "010000000000000000000000",
+      "plaintextHex": "00207b68e5cf8b010000",
+      "frameHex": "1001000000000000007b259f7053c8c8bd259213c7ae1095cedf515ded93237654155c"
+    },
+    {
+      "note": "Video/Frame keyframe ts=33333us data=00000001 6742",
+      "counter": 2,
+      "channel": 1,
+      "type": 1,
+      "payloadHex": "013582000000000000000000016742",
+      "nonceHex": "020000000000000000000000",
+      "plaintextHex": "0101013582000000000000000000016742",
+      "frameHex": "10020000000000000082ab2a8c6486d76581fb7559971a81c71dc5fa005aee2fbc9af9b77049fb740fc9"
+    }
+  ]
+}
