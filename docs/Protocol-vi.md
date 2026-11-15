@@ -110,4 +110,11 @@ Khi xem một cửa sổ, Host đưa cửa sổ đó lên trước (`SetForegrou
 
 ## 6. Vector kiểm thử
 
-`tests/FocusRemote.Protocol.Tests/TestVectors.json` chứa vector tính khoá và gói Sealed mẫu. Bản C# và bản JS phải cùng ra đúng các giá trị đó.
+`src/FocusRemote.Protocol.Tests/TestVectors.json` chứa vector tính khoá (PBKDF2 đủ 600000 vòng) và gói Sealed mẫu cho mỗi chiều (counter bắt đầu từ 0, liên tiếp). Bản C# và bản JS phải cùng ra đúng các giá trị đó. File được sinh bằng WebCrypto của Node và test C# khẳng định tái tạo đúng.
+
+## 7. Quy ước khi đặc tả chưa nói rõ
+
+- Gói Input/Video/Audio có byte thừa ở cuối thì bên nhận bỏ qua phần thừa (để mở rộng về sau); gói ngắn hơn mức tối thiểu thì bỏ gói đó.
+- Bit không dùng trong `flags` của Video Frame bị bỏ qua.
+- JSON của Control: trường lạ bị bỏ qua; thiếu trường bắt buộc hoặc JSON hỏng thì bỏ gói, không đóng phiên.
+- Độ dài password tính theo số đơn vị UTF-16 (giống `string.length` của JS).
