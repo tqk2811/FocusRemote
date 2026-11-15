@@ -59,3 +59,31 @@ FR_API const char* FR_CALL FrEncoder_GetAdapterName(FrEncoder* encoder);
 FR_API uint32_t FR_CALL FrEncoder_GetAdapterVendorId(FrEncoder* encoder);
 FR_API const char* FR_CALL FrEncoder_GetLastError(FrEncoder* encoder);
 FR_API void FR_CALL FrEncoder_Destroy(FrEncoder* encoder);
+
+// ---------- Opus audio encoder (FFmpeg libopus; fallback FFmpeg native "opus") ----------
+
+typedef struct FrAudioEncoder FrAudioEncoder;
+
+#pragma pack(push, 8)
+typedef struct FrAudioEncoderOptions
+{
+	int32_t sampleRate;      // e.g. 48000
+	int32_t channels;        // 1 or 2
+	int32_t bitrateKbps;     // > 0
+	int32_t frameDurationMs; // 20 recommended (2.5/5/10/20/40/60 for libopus)
+} FrAudioEncoderOptions;
+#pragma pack(pop)
+
+FR_API FrAudioEncoder* FR_CALL FrAudioEncoder_Create();
+// Open (or re-open) with low-delay settings. Returns 0 on success.
+FR_API int32_t FR_CALL FrAudioEncoder_Open(FrAudioEncoder* encoder, const FrAudioEncoderOptions* options);
+// Samples per channel each Send must provide (e.g. 960 for 20 ms at 48 kHz); 0 before Open.
+FR_API int32_t FR_CALL FrAudioEncoder_GetFrameSamples(FrAudioEncoder* encoder);
+// Queue one frame of interleaved 32-bit float PCM (exactly GetFrameSamples samples per channel). Returns 0 on success.
+FR_API int32_t FR_CALL FrAudioEncoder_Send(FrAudioEncoder* encoder, const float* samples, int32_t samplesPerChannel, int64_t timestampUs);
+// Fetch the next packet: 1 when outPacket holds one raw Opus packet (owned by the encoder, valid until the next
+// Receive/Open/Destroy), 0 when nothing is ready, < 0 on error. Call until it returns 0 after each Send.
+FR_API int32_t FR_CALL FrAudioEncoder_Receive(FrAudioEncoder* encoder, FrPacket* outPacket);
+FR_API const char* FR_CALL FrAudioEncoder_GetEncoderName(FrAudioEncoder* encoder);
+FR_API const char* FR_CALL FrAudioEncoder_GetLastError(FrAudioEncoder* encoder);
+FR_API void FR_CALL FrAudioEncoder_Destroy(FrAudioEncoder* encoder);

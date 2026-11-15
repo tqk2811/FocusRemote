@@ -319,6 +319,7 @@ function renderSources() {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
+    btn.dataset.sourceId = s.id;
     if (s.id === state.activeSourceId) btn.classList.add('active');
     const title = document.createElement('span');
     title.className = 'title';
@@ -422,6 +423,26 @@ function init() {
   window.addEventListener('pagehide', () => { input.releaseAll(); stopConnection(); });
   // Keep a reference for debugging from the console.
   globalThis.focusRemote = { state, video, audio, input, InputType };
+  // Read-only snapshot of decoder counters for debugging and the browser E2E test.
+  Object.defineProperty(globalThis, '__frStats', {
+    get: () => ({
+      authenticated: !!state.conn?.isAuthenticated,
+      streaming: state.streaming,
+      activeSourceId: state.activeSourceId,
+      sources: state.sources.map((s) => s.id),
+      videoFramesReceived: video.framesReceived,
+      videoFramesDecoded: video.framesDecoded,
+      videoFramesDrawn: video.framesDrawn,
+      videoDecoderErrors: video.decoderErrors,
+      videoWidth: el.canvas.width,
+      videoHeight: el.canvas.height,
+      audioConfigured: !!audio.config,
+      audioMuted: audio.muted,
+      audioPacketsReceived: audio.packetsReceived,
+      audioFramesDecoded: audio.framesDecoded,
+      audioDecoderErrors: audio.decoderErrors,
+    }),
+  });
 }
 
 init();

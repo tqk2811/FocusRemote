@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Lan;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Models;
@@ -20,6 +21,7 @@ public sealed class HostService : IAsyncDisposable
 {
     private readonly IAppLog _log;
     private readonly string _webRoot;
+    private readonly Func<IInputInjector>? _inputInjectorFactory;
     private readonly object _statusLock = new();
     private HostStatus _status = new();
     private HostSessionManager? _manager;
@@ -28,10 +30,12 @@ public sealed class HostService : IAsyncDisposable
     private X509Certificate2? _certificate;
 
     /// <param name="webRoot">Folder with the WebViewer files served in LAN mode.</param>
-    public HostService(IAppLog log, string webRoot)
+    /// <param name="inputInjectorFactory">Input injector per viewer session; null = real SendInput (the E2E harness passes a dry-run one).</param>
+    public HostService(IAppLog log, string webRoot, Func<IInputInjector>? inputInjectorFactory = null)
     {
         _log = log;
         _webRoot = webRoot;
+        _inputInjectorFactory = inputInjectorFactory;
     }
 
     public event Action<HostStatus>? StatusChanged;
@@ -46,7 +50,7 @@ public sealed class HostService : IAsyncDisposable
         await StopAsync();
         string id = settings.Id;
         byte[] key = rootKey.ToArray();
-        var manager = new HostSessionManager(() => key, new SourceCatalog(), _log);
+        var manager = new HostSessionManager(() => key, new SourceCatalog(), _log, inputInjectorFactory: _inputInjectorFactory);
         manager.ViewerChanged += viewer => Update(s => s with { Viewer = viewer, Stream = viewer is null ? null : s.Stream });
         manager.StreamStatsChanged += stats => Update(s => s with { Stream = stats });
         _manager = manager;

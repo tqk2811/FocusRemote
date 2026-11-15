@@ -27,5 +27,17 @@ VBR không đặt `cq`, khung tĩnh ~3.5 MB/5 s. Tinh chỉnh sau.
 ## [Vừa] Host: toạ độ input của cửa sổ theo khung DWM, chưa tính phần thu nhỏ/che
 Input cửa sổ quy đổi theo `DWMWA_EXTENDED_FRAME_BOUNDS` (đúng vùng WinRT capture, gồm cả thanh tiêu đề) chứ không phải client area. Cửa sổ thu nhỏ thì capture dừng nhưng stream vẫn mở; chưa báo viewer.
 
-## [Thấp] Host: chưa thử LAN bằng trình duyệt thật
-LAN đã có test tích hợp (Kestrel HTTPS + viewer C#), nhưng chưa chạy WebViewer trong Chrome/Safari điện thoại qua chứng chỉ tự ký, chưa thử firewall rule.
+## [Thấp] Host: chưa thử LAN trên điện thoại thật
+Chrome desktop qua chứng chỉ tự ký đã chạy (E2E `run-e2e.mjs --mode lan`, xem docs/Host-vi.md). Chưa thử Chrome Android/Safari iOS (chấp nhận cảnh báo chứng chỉ, WebCodecs), chưa thử firewall rule.
+
+## [Thấp] E2E: LAN listen 0.0.0.0 làm Windows Firewall hỏi quyền
+`LanServer` luôn bind `IPAddress.Any`, nên lần đầu chạy harness E2E (và test LAN) Windows hiện hộp thoại firewall trên desktop. Cân nhắc option bind loopback cho test/harness.
+
+## [Vừa] Viewer: tắt tiếng vẫn nhận gói âm thanh
+WebViewer mặc định tắt tiếng và bỏ gói Opus khi đang tắt, nhưng Host vẫn capture + gửi (~96 kbps). Cân nhắc message Control bật/tắt âm thanh, hoặc viewer chỉ gửi `audio:true` khi đã bật loa.
+
+## [Thấp] Audio: chưa đồng bộ hình/tiếng, gói im lặng đều đặn
+Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms), không khớp `timestampUs` với video. Khi máy im lặng Host vẫn gửi ~50 gói/s (vài byte mỗi gói) để giữ nhịp; có thể bật DTX của Opus.
+
+## [Vừa] Video: màn hình đứng yên chỉ ~1 khung/s
+WinRT capture chỉ đưa khung khi nội dung đổi, cộng với lỗi Flush ở trên, viewer chờ khá lâu mới đủ khung khi màn hình tĩnh (E2E đo 10 khung mất 10–20 s). Cân nhắc lặp lại khung cuối/keyframe định kỳ khi không có khung mới.

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Input.Models;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Models;
@@ -13,7 +14,7 @@ namespace FocusRemote.Host.Core.Input;
 /// Replays viewer input with SendInput (protocol §5.3). Tracks held keys/buttons so <see cref="ReleaseAll"/>
 /// can undo them. Not thread-safe: call from the session's receive thread only.
 /// </summary>
-public sealed class InputInjector
+public sealed class InputInjector : IInputInjector
 {
     private static readonly int _inputSize = Marshal.SizeOf<INPUT>();
 
