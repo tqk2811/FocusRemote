@@ -42,8 +42,7 @@ FocusRemote/
   src/FocusRemote.Protocol/
   src/FocusRemote.Host/
   src/FocusRemote.Relay/        (kèm wwwroot = WebViewer)
-  libs/                         (submodule TqkLibrary nếu không có NuGet)
-  tests/FocusRemote.Protocol.Tests/
+  src/FocusRemote.Protocol.Tests/   (mọi code, kể cả test/tool, nằm trong src/)
   docs/
 ```
 
