@@ -22,6 +22,10 @@ export class AudioPlayer {
     this.ctx = null;
     this.nextTime = 0;
     this.gain = null;
+    // Debug counters (exposed as window.__frStats, used by the browser E2E test).
+    this.packetsReceived = 0;
+    this.framesDecoded = 0;
+    this.decoderErrors = 0;
   }
 
   get supported() { return typeof AudioDecoder !== 'undefined' && (globalThis.AudioContext || globalThis.webkitAudioContext); }
@@ -53,6 +57,7 @@ export class AudioPlayer {
 
   /** Audio Packet message ({ timestampUs, data }). */
   push(packet) {
+    this.packetsReceived++;
     if (this.muted || !this.config || !this.ctx || typeof AudioDecoder === 'undefined') return;
     if (!this.decoder && !this._openDecoder()) return;
     try {
@@ -73,7 +78,7 @@ export class AudioPlayer {
     try {
       this.decoder = new AudioDecoder({
         output: (d) => this._onOutput(d),
-        error: (e) => { console.warn('Audio decoder error', e); this._closeDecoder(); },
+        error: (e) => { console.warn('Audio decoder error', e); this.decoderErrors++; this._closeDecoder(); },
       });
       this.decoder.configure(this.config);
       return true;
@@ -93,6 +98,7 @@ export class AudioPlayer {
   }
 
   _onOutput(data) {
+    this.framesDecoded++;
     try {
       if (this.muted || !this.ctx) return;
       const channels = data.numberOfChannels, frames = data.numberOfFrames;

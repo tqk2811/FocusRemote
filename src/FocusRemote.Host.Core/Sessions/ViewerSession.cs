@@ -1,5 +1,5 @@
 using System.Reflection;
-using FocusRemote.Host.Core.Input;
+using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Models;
 using FocusRemote.Host.Core.Sessions.Interfaces;
@@ -30,7 +30,7 @@ internal sealed class ViewerSession : IVideoSink, IDisposable
     private readonly Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer> _streamerFactory;
     private readonly Action<StreamStats?> _statsChanged;
     private readonly OutboundQueue _outbound = new();
-    private readonly InputInjector _input;
+    private readonly IInputInjector _input;
     private readonly object _streamLock = new();
     private IVideoStreamer? _streamer;
 
@@ -40,7 +40,8 @@ internal sealed class ViewerSession : IVideoSink, IDisposable
         ISourceCatalog catalog,
         IAppLog log,
         Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer> streamerFactory,
-        Action<StreamStats?> statsChanged)
+        Action<StreamStats?> statsChanged,
+        IInputInjector input)
     {
         _link = link;
         _session = session;
@@ -48,7 +49,7 @@ internal sealed class ViewerSession : IVideoSink, IDisposable
         _log = log;
         _streamerFactory = streamerFactory;
         _statsChanged = statsChanged;
-        _input = new InputInjector(log);
+        _input = input;
     }
 
     public bool IsCongested => _outbound.IsCongested;

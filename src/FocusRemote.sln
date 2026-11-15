@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FocusRemote.Host", "FocusRe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FocusRemote.Host.Tests", "FocusRemote.Host.Tests\FocusRemote.Host.Tests.csproj", "{7C48A1F4-EDC3-41EF-AA86-97F3FAE94058}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FocusRemote.E2E", "FocusRemote.E2E\FocusRemote.E2E.csproj", "{FB028610-D18A-4701-9A99-8E21F41B3DB1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -147,6 +149,18 @@ Global
 		{7C48A1F4-EDC3-41EF-AA86-97F3FAE94058}.Release|x64.Build.0 = Release|Any CPU
 		{7C48A1F4-EDC3-41EF-AA86-97F3FAE94058}.Release|x86.ActiveCfg = Release|Any CPU
 		{7C48A1F4-EDC3-41EF-AA86-97F3FAE94058}.Release|x86.Build.0 = Release|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Debug|x64.Build.0 = Debug|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Debug|x86.Build.0 = Debug|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Release|x64.ActiveCfg = Release|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Release|x64.Build.0 = Release|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Release|x86.ActiveCfg = Release|Any CPU
+		{FB028610-D18A-4701-9A99-8E21F41B3DB1}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -56,7 +56,11 @@ export class VideoPlayer {
     this.waitingKeyframe = true;
     this.pendingFrame = null;
     this.rafId = 0;
+    // Debug counters (exposed as window.__frStats, used by the browser E2E test).
+    this.framesReceived = 0;
     this.framesDecoded = 0;
+    this.framesDrawn = 0;
+    this.decoderErrors = 0;
     this.hasFrame = false;
   }
 
@@ -82,6 +86,7 @@ export class VideoPlayer {
 
   /** Feeds one parsed Video Frame message ({ isKeyframe, timestampUs, data }). */
   push(frame) {
+    this.framesReceived++;
     if (!this.codec || typeof VideoDecoder === 'undefined') return;
     if (this.waitingKeyframe) {
       if (!frame.isKeyframe) return;
@@ -147,6 +152,7 @@ export class VideoPlayer {
 
   _onDecoderError(e) {
     console.warn('Video decoder error', e);
+    this.decoderErrors++;
     this._closeDecoder();
     this.waitingKeyframe = true;
     this.opts.onNeedKeyframe();
@@ -171,6 +177,7 @@ export class VideoPlayer {
     }
     this.ctx.drawImage(frame, 0, 0, w, h);
     frame.close();
+    this.framesDrawn++;
     if (!this.hasFrame) {
       this.hasFrame = true;
       this.opts.onFirstFrame?.();

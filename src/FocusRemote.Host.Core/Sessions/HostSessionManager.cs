@@ -1,3 +1,5 @@
+using FocusRemote.Host.Core.Input;
+using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Sessions.Interfaces;
 using FocusRemote.Host.Core.Sources.Interfaces;
@@ -27,23 +29,27 @@ public sealed class HostSessionManager
     private readonly IAppLog _log;
     private readonly Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer> _streamerFactory;
     private readonly AuthFailureDelayPolicy _failurePolicy;
+    private readonly Func<IInputInjector> _inputInjectorFactory;
     private readonly object _lock = new();
     private IViewerLink? _activeLink;
 
     /// <param name="rootKeyProvider">Current 32-byte root key (null = not configured, viewers are refused).</param>
     /// <param name="streamerFactory">Creates the video streamer; null = <see cref="VideoStreamer"/>.</param>
+    /// <param name="inputInjectorFactory">Creates one input injector per viewer session; null = <see cref="InputInjector"/> (SendInput).</param>
     public HostSessionManager(
         Func<byte[]?> rootKeyProvider,
         ISourceCatalog catalog,
         IAppLog log,
         Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer>? streamerFactory = null,
-        AuthFailureDelayPolicy? failurePolicy = null)
+        AuthFailureDelayPolicy? failurePolicy = null,
+        Func<IInputInjector>? inputInjectorFactory = null)
     {
         _rootKeyProvider = rootKeyProvider;
         _catalog = catalog;
         _log = log;
         _streamerFactory = streamerFactory ?? ((source, request, sink) => new VideoStreamer(source, request, sink, log));
         _failurePolicy = failurePolicy ?? new AuthFailureDelayPolicy();
+        _inputInjectorFactory = inputInjectorFactory ?? (() => new InputInjector(log));
     }
 
     /// <summary>Raised with the viewer origin when a viewer authenticates, and with null when it leaves.</summary>
@@ -97,7 +103,7 @@ public sealed class HostSessionManager
 
             _log.Info($"Viewer {link.Origin}: authenticated");
             ViewerChanged?.Invoke(link.Origin);
-            using var viewer = new ViewerSession(link, session, _catalog, _log, _streamerFactory, stats => StreamStatsChanged?.Invoke(stats));
+            using var viewer = new ViewerSession(link, session, _catalog, _log, _streamerFactory, stats => StreamStatsChanged?.Invoke(stats), _inputInjectorFactory());
             try
             {
                 await viewer.RunAsync(cancellationToken);
