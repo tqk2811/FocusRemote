@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<PlatformTarget>x64</PlatformTarget>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<RootNamespace>FocusRemote.Host.Encoding</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Pinned with the native encoder build: the vcxproj links against this exact version (FFmpegPackageVersion). -->
+		<PackageReference Include="TqkLibrary.FFmpeg.Lgpl2.Native.Win.x64" Version="9.0.2" />
+	</ItemGroup>
+
+	<!--
+		Native encoder (C++). Built with Visual Studio MSBuild because the .NET SDK MSBuild cannot build .vcxproj.
+		Set SkipNativeEncoderBuild=true to use an already built DLL.
+		The DLL goes next to the FFmpeg DLLs (runtimes/win-x64/native) so the loader finds avcodec/avutil beside it.
+	-->
+	<PropertyGroup>
+		<NativeEncoderProject>$(MSBuildThisFileDirectory)..\FocusRemote.Encoder.Native\FocusRemote.Encoder.Native.vcxproj</NativeEncoderProject>
+		<NativeEncoderConfiguration Condition="'$(Configuration)' == 'Debug'">Debug</NativeEncoderConfiguration>
+		<NativeEncoderConfiguration Condition="'$(Configuration)' != 'Debug'">Release</NativeEncoderConfiguration>
+		<NativeEncoderDll>$(MSBuildThisFileDirectory)..\FocusRemote.Encoder.Native\bin\x64\$(NativeEncoderConfiguration)\FocusRemote.Encoder.Native.dll</NativeEncoderDll>
+	</PropertyGroup>
+
+	<Target Name="BuildNativeEncoder" BeforeTargets="AssignTargetPaths" Condition="'$(SkipNativeEncoderBuild)' != 'true'">
+		<MSBuild Condition="'$(MSBuildRuntimeType)' == 'Full'" Projects="$(NativeEncoderProject)" Properties="Configuration=$(NativeEncoderConfiguration);Platform=x64" Targets="Build" />
+		<Exec Condition="'$(MSBuildRuntimeType)' != 'Full'" ConsoleToMSBuild="true"
+			Command="&quot;$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe&quot; -latest -prerelease -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe">
+			<Output TaskParameter="ConsoleOutput" PropertyName="_VsMSBuildExe" />
+		</Exec>
+		<Error Condition="'$(MSBuildRuntimeType)' != 'Full' And '$(_VsMSBuildExe)' == ''" Text="Visual Studio MSBuild (C++ workload) not found; build FocusRemote.Encoder.Native manually and pass -p:SkipNativeEncoderBuild=true." />
+		<Exec Condition="'$(MSBuildRuntimeType)' != 'Full'" Command="&quot;$(_VsMSBuildExe)&quot; &quot;$(NativeEncoderProject)&quot; -p:Configuration=$(NativeEncoderConfiguration) -p:Platform=x64 -nologo -v:m -nodeReuse:false" />
+	</Target>
+
+	<ItemGroup>
+		<None Include="$(NativeEncoderDll)" Link="runtimes\win-x64\native\FocusRemote.Encoder.Native.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+	</ItemGroup>
+
+</Project>
