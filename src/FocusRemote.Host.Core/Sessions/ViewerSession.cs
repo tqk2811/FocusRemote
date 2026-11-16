@@ -1,8 +1,10 @@
 using System.Reflection;
 using FocusRemote.Host.Core.Audio.Interfaces;
+using FocusRemote.Host.Core.Input;
 using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Models;
+using FocusRemote.Host.Core.Native;
 using FocusRemote.Host.Core.Sessions.Interfaces;
 using FocusRemote.Host.Core.Sources.Enums;
 using FocusRemote.Host.Core.Sources.Interfaces;
@@ -199,6 +201,12 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
     {
         StopStreamer();
         CaptureSource? source = _catalog.Find(select.Id);
+        if (source is { Kind: SourceKind.Window } && NativeMethods.IsIconic(source.Handle))
+        {
+            // WGC delivers no frames for a minimized window: restore it, then re-read its (now real) bounds.
+            WindowActivator.EnsureForeground(source.Handle);
+            source = _catalog.Find(select.Id);
+        }
         if (source is null)
         {
             SendControl(ControlType.Error, new ErrorMessage { Code = "source_not_found", Message = "Nguồn không còn tồn tại: " + select.Id });
