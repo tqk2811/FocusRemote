@@ -21,9 +21,6 @@ VBR không đặt `cq`, khung tĩnh ~3.5 MB/5 s. Tinh chỉnh sau.
 ## [Vừa] Host: toạ độ input của cửa sổ theo khung DWM, chưa tính phần thu nhỏ/che
 Input cửa sổ quy đổi theo `DWMWA_EXTENDED_FRAME_BOUNDS` (đúng vùng WinRT capture, gồm cả thanh tiêu đề) chứ không phải client area. Cửa sổ thu nhỏ thì capture dừng nhưng stream vẫn mở; chưa báo viewer.
 
-## [Thấp] Host: chưa thử LAN trên điện thoại thật
-Chrome desktop qua chứng chỉ tự ký đã chạy (E2E `run-e2e.mjs --mode lan`, xem docs/Host-vi.md). Chưa thử Chrome Android/Safari iOS (chấp nhận cảnh báo chứng chỉ, WebCodecs), chưa thử firewall rule.
-
 ## [Thấp] E2E: LAN listen 0.0.0.0 làm Windows Firewall hỏi quyền
 `LanServer` luôn bind `IPAddress.Any`, nên lần đầu chạy harness E2E (và test LAN) Windows hiện hộp thoại firewall trên desktop. Cân nhắc option bind loopback cho test/harness.
 
