@@ -7,27 +7,23 @@ using FocusRemote.Host.Core.Sources.Models;
 using FocusRemote.Host.Core.Video.Interfaces;
 using FocusRemote.Host.Core.Video.Models;
 using FocusRemote.Host.Encoding;
+using FocusRemote.Host.Encoding.Enums;
 using FocusRemote.Host.Encoding.Models;
 using FocusRemote.Protocol.Messages;
 using FocusRemote.Protocol.Messages.Models.Control;
-using TqkLibrary.WindowCapture.Captures;
 
 namespace FocusRemote.Host.Core.Video;
 
 /// <summary>
-/// Captures one source with Windows.Graphics.Capture and encodes it on a dedicated thread at the requested fps.
-/// Capture, encoder and all their calls live on that thread (neither is thread-safe).
-/// <para>
-/// Known limitation (backlog [Cao], docs/Encoder-vi.md): TqkLibrary.WindowCapture 1.0.8 does not Flush after
-/// Render, so a frame drawn into the shared surface may not be visible to the encoder device yet. Mitigation
-/// here: encode only when Render reports a new capture frame, plus forced/periodic keyframes. A static
-/// picture can still come out black or one frame late until the library is fixed upstream.
-/// </para>
+/// Captures one source (Windows.Graphics.Capture inside the encoder DLL, on the encoder's D3D11 device) and encodes
+/// it on a dedicated thread at the requested fps. Capture, encoder and all their calls live on that thread.
 /// </summary>
 public sealed class VideoStreamer : IVideoStreamer
 {
     public static readonly TimeSpan KeyframeInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan _firstFrameTimeout = TimeSpan.FromMilliseconds(500);
+    /// <summary>While the picture is static the last frame is re-encoded at this interval (5 fps).</summary>
+    public static readonly TimeSpan StaticRepeatInterval = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan _firstFrameTimeout = TimeSpan.FromSeconds(3);
 
     private readonly CaptureSource _source;
     private readonly SelectSourceMessage _request;
@@ -84,32 +80,37 @@ public sealed class VideoStreamer : IVideoStreamer
     /// <summary>Returns the StreamStopped reason, or null when stopped by <see cref="Dispose"/>.</summary>
     private string? RunCore()
     {
-        using var capture = new WinrtGraphicCapture { MaxFps = _fps };
-        if (WinrtGraphicCapture.IsBorderToggleSupported)
-            capture.IsShowBorder = false;
-        if (WinrtGraphicCapture.IsCaptureCursorToggleSupported)
-            capture.IsShowCursor = true;
-        bool initialized = _source.Kind == SourceKind.Window ? capture.InitWindow(_source.Handle) : capture.InitMonitor(_source.Handle);
-        if (!initialized)
-            throw new InvalidOperationException("Không khởi tạo được capture cho nguồn " + _source.Id);
-
-        Stopwatch waitSize = Stopwatch.StartNew();
-        while (capture.Size.IsEmpty && waitSize.ElapsedMilliseconds < 3000 && !_stopRequested)
-            Thread.Sleep(10);
-        if (capture.Size.IsEmpty)
-            throw new InvalidOperationException("Capture không trả kích thước nguồn.");
-
         using var encoder = new HardwareVideoEncoder();
+        CaptureTargetKind kind = _source.Kind == SourceKind.Window ? CaptureTargetKind.Window : CaptureTargetKind.Monitor;
+        using var capture = new ScreenCapture(encoder, kind, _source.Handle, showCursor: true);
+
+        // Encode needs a frame; a static source still delivers its first frame right after start, but a minimized
+        // window delivers none until restored, so keep waiting (no StreamStarted yet) instead of failing.
+        Stopwatch waitFrame = Stopwatch.StartNew();
+        bool waitLogged = false;
+        while (!capture.Poll())
+        {
+            if (_stopRequested)
+                return null;
+            if (capture.IsClosed || (_source.Kind == SourceKind.Window && !NativeMethods.IsWindow(_source.Handle)))
+                return "closed";
+            if (!waitLogged && waitFrame.Elapsed >= _firstFrameTimeout)
+            {
+                waitLogged = true;
+                _log.Info($"Stream {_source.Id}: no frame after {_firstFrameTimeout.TotalSeconds:0} s (minimized window?), still waiting");
+            }
+            Thread.Sleep(20);
+        }
+
         Size captureSize = capture.Size;
         OpenEncoder(encoder, captureSize);
-        int renderedGeneration = int.MinValue;
-        WaitFirstFrame(capture, encoder, ref renderedGeneration);
 
         Stopwatch clock = Stopwatch.StartNew();
         long frameTicks = Stopwatch.Frequency / _fps;
         long nextDue = 0;
         bool forceKeyframe = true;
         TimeSpan lastKeyframe = TimeSpan.MinValue;
+        TimeSpan lastEncode = TimeSpan.Zero; // first tick encodes anyway (forceKeyframe)
         StatsWindow stats = new(clock.Elapsed);
 
         while (!_stopRequested)
@@ -122,9 +123,10 @@ public sealed class VideoStreamer : IVideoStreamer
             }
             nextDue = Math.Max(nextDue + frameTicks, now);
 
-            if (_source.Kind == SourceKind.Window && !NativeMethods.IsWindow(_source.Handle))
+            if (capture.IsClosed || (_source.Kind == SourceKind.Window && !NativeMethods.IsWindow(_source.Handle)))
                 return "closed";
 
+            bool newFrame = capture.Poll();
             Size size = capture.Size;
             if (!size.IsEmpty && size != captureSize)
             {
@@ -142,11 +144,6 @@ public sealed class VideoStreamer : IVideoStreamer
                 continue;
             }
 
-            bool isNewSurface = renderedGeneration != encoder.SurfaceGeneration;
-            bool isNewTargetView = false;
-            bool rendered = capture.Render(encoder.InputSurface, isNewSurface, ref isNewTargetView);
-            renderedGeneration = encoder.SurfaceGeneration;
-
             TimeSpan elapsed = clock.Elapsed;
             if (_keyframeRequested)
             {
@@ -154,10 +151,14 @@ public sealed class VideoStreamer : IVideoStreamer
                 forceKeyframe = true;
             }
             bool keyframeDue = forceKeyframe || elapsed - lastKeyframe >= KeyframeInterval;
-            if (rendered || keyframeDue)
+            // WinRT capture only delivers frames on change: repeat the last picture at a low rate while static
+            // so a viewer still gets a steady (cheap) stream.
+            bool repeatDue = elapsed - lastEncode >= StaticRepeatInterval;
+            if (newFrame || keyframeDue || repeatDue)
             {
                 long timestampUs = elapsed.Ticks / (TimeSpan.TicksPerMillisecond / 1000);
-                if (encoder.Encode(keyframeDue, timestampUs, out EncodedPacket packet))
+                lastEncode = elapsed;
+                if (encoder.Encode(capture, keyframeDue, timestampUs, out EncodedPacket packet))
                 {
                     _sink.OnFrame(VideoMessages.BuildFrame(packet.IsKeyframe, (ulong)timestampUs, packet.Data));
                     if (packet.IsKeyframe)
@@ -202,22 +203,6 @@ public sealed class VideoStreamer : IVideoStreamer
 
     private int _encodeWidth;
     private int _encodeHeight;
-
-    /// <summary>Render(isNewSurface) draws even without a capture frame, so wait for a real frame first.</summary>
-    private void WaitFirstFrame(WinrtGraphicCapture capture, HardwareVideoEncoder encoder, ref int renderedGeneration)
-    {
-        bool isNewTargetView = false;
-        capture.Render(encoder.InputSurface, true, ref isNewTargetView);
-        renderedGeneration = encoder.SurfaceGeneration;
-        Stopwatch wait = Stopwatch.StartNew();
-        while (!_stopRequested && wait.Elapsed < _firstFrameTimeout)
-        {
-            isNewTargetView = false;
-            if (capture.Render(encoder.InputSurface, false, ref isNewTargetView))
-                return;
-            Thread.Sleep(5);
-        }
-    }
 
     private void PublishStats(StatsWindow stats, TimeSpan now, HardwareVideoEncoder encoder)
     {

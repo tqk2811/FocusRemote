@@ -12,9 +12,6 @@ Bật lên thì xoá KnownNetworks/KnownProxies. Thêm option danh sách proxy t
 ## [Thấp] Relay: test lỗi kết nối
 Chưa có test client rớt giữa chừng, bên nhận chậm.
 
-## [Cao] WindowCapture: thiếu Flush sau Render (khung tĩnh ra đen)
-`RenderToSurface::Render` của TqkLibrary.WindowCapture 1.0.8 không gọi `Flush()`, encoder ở device khác đọc surface chưa vẽ → màn hình đứng yên thì toàn khung đen. Đã thử thêm `deviceCtx->Flush()` sau `Draw` là đúng hình. Cần sửa upstream (tốt hơn: keyed mutex/fence) và bật multithread protected cho context. Chi tiết: docs/Encoder-vi.md.
-
 ## [Vừa] Encoder: h264_qsv chưa zero-copy
 Bản FFmpeg này h264_qsv chỉ nhận nv12/qsv → máy Intel đi đường bộ nhớ hệ thống. Cần derive frame D3D11 → QSV. Chưa thử HEVC/qsv/amf.
 
@@ -39,5 +36,11 @@ WebViewer mặc định tắt tiếng và bỏ gói Opus khi đang tắt, nhưng
 ## [Thấp] Audio: chưa đồng bộ hình/tiếng, gói im lặng đều đặn
 Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms), không khớp `timestampUs` với video. Khi máy im lặng Host vẫn gửi ~50 gói/s (vài byte mỗi gói) để giữ nhịp; có thể bật DTX của Opus.
 
-## [Vừa] Video: màn hình đứng yên chỉ ~1 khung/s
-WinRT capture chỉ đưa khung khi nội dung đổi, cộng với lỗi Flush ở trên, viewer chờ khá lâu mới đủ khung khi màn hình tĩnh (E2E đo 10 khung mất 10–20 s). Cân nhắc lặp lại khung cuối/keyframe định kỳ khi không có khung mới.
+## [Vừa] Capture: chưa thử trên GPU Intel/AMD và laptop hybrid
+`VideoProcessor` tạo enumerator với input = cỡ encoder, còn texture capture có thể lớn hơn (vd 4K → 1080p). NVIDIA chạy tốt, driver khác có thể từ chối `CreateVideoProcessorInputView`. Nếu lỗi thì tạo enumerator theo cỡ capture. Màn hình gắn vào adapter khác adapter 0 thì WGC tự copy chéo adapter (thêm một lượt qua PCIe).
+
+## [Thấp] Capture: viền vàng có thể vẫn hiện
+`IsBorderRequired(false)` cần quyền `GraphicsCaptureAccess` Borderless; app desktop không đóng gói có thể bị từ chối, lỗi đang bị nuốt. Cân nhắc gọi `RequestAccessAsync` và log kết quả.
+
+## [Thấp] Video: cửa sổ thu nhỏ lúc chọn nguồn thì viewer chờ không báo gì
+WGC không đưa khung khi cửa sổ thu nhỏ; `VideoStreamer` chờ tới khi có khung đầu mới gửi StreamStarted. Cân nhắc báo viewer (vd `IsIconic`).

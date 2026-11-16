@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "FocusRemoteEncoder.h"
+#include "FrInternal.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -80,8 +80,8 @@ public:
 		HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()));
 		if (FAILED(hr))
 			return Fail("CreateDXGIFactory1 failed: " + HrError(hr));
-		// Adapter 0 = the adapter D3D11CreateDevice(nullptr) picks, which is what TqkLibrary.WindowCapture uses.
-		// The legacy shared texture only opens on a device of the same adapter.
+		// Adapter 0 = the adapter D3D11CreateDevice(nullptr) picks. Capture runs on this same device
+		// (FrCapture), Windows.Graphics.Capture handles a source shown on another adapter.
 		ComPtr<IDXGIAdapter1> adapter;
 		hr = factory->EnumAdapters1(0, adapter.GetAddressOf());
 		if (FAILED(hr))
@@ -140,9 +140,7 @@ public:
 		Close();
 		_options = options;
 
-		int32_t result = CreateInputSurface();
-		if (result == 0)
-			result = CreateVideoProcessor();
+		int32_t result = CreateVideoProcessor();
 		if (result != 0)
 			return result;
 
@@ -157,14 +155,18 @@ public:
 		return Fail("no encoder could be opened (" + errors + ")");
 	}
 
-	void* InputSurface() const { return _inputSurface.Get(); }
-	int32_t SurfaceGeneration() const { return _surfaceGeneration; }
+	ID3D11Device* Device() const { return _device.Get(); }
 
-	int32_t Encode(bool forceKeyframe, int64_t timestampUs, FrPacket* outPacket)
+	int32_t Encode(FrCapture* capture, bool forceKeyframe, int64_t timestampUs, FrPacket* outPacket)
 	{
 		*outPacket = {};
 		if (!_codec)
 			return Fail("encoder is not open");
+		ID3D11Texture2D* texture = FrInternal_CaptureTexture(capture);
+		if (!texture)
+			return Fail("capture has no frame yet");
+		if (SetInputTexture(texture) != 0)
+			return -1;
 
 		int32_t result = EncodeOnce(forceKeyframe, timestampUs, outPacket);
 		if (result < 0 && _framesSent == 0 && _isZeroCopy)
@@ -250,31 +252,35 @@ private:
 		return names;
 	}
 
-	int32_t CreateInputSurface()
+	// Input view for the capture texture; the capture creates a new texture object when the source size changes.
+	int32_t SetInputTexture(ID3D11Texture2D* texture)
 	{
+		if (_inputTexture.Get() == texture && _inputView)
+			return 0;
+		_inputView.Reset();
+		_inputTexture = texture;
+		D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputDesc{};
+		inputDesc.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+		HRESULT hr = _videoDevice->CreateVideoProcessorInputView(texture, _vpEnumerator.Get(), &inputDesc, _inputView.ReleaseAndGetAddressOf());
+		if (FAILED(hr))
+		{
+			_inputTexture.Reset();
+			return Fail("CreateVideoProcessorInputView failed: " + HrError(hr));
+		}
 		D3D11_TEXTURE2D_DESC desc{};
-		desc.Width = _options.width;
-		desc.Height = _options.height;
-		desc.MipLevels = 1;
-		desc.ArraySize = 1;
-		desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-		desc.SampleDesc.Count = 1;
-		desc.Usage = D3D11_USAGE_DEFAULT;
-		desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-		// Legacy shared handle (IDXGIResource::GetSharedHandle) is what WindowCapture opens.
-		desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
-		HRESULT hr = _device->CreateTexture2D(&desc, nullptr, _inputTexture.ReleaseAndGetAddressOf());
-		if (FAILED(hr))
-			return Fail("CreateTexture2D(shared BGRA) failed: " + HrError(hr));
-		hr = _inputTexture.As(&_inputSurface);
-		if (FAILED(hr))
-			return Fail("IDXGISurface not available: " + HrError(hr));
-		++_surfaceGeneration;
+		texture->GetDesc(&desc);
+		// Whole capture frame -> whole output (the host keeps the aspect ratio when choosing the encoder size).
+		RECT source{ 0, 0, static_cast<LONG>(desc.Width), static_cast<LONG>(desc.Height) };
+		RECT target{ 0, 0, _options.width, _options.height };
+		_videoContext->VideoProcessorSetStreamSourceRect(_videoProcessor.Get(), 0, TRUE, &source);
+		_videoContext->VideoProcessorSetStreamDestRect(_videoProcessor.Get(), 0, TRUE, &target);
+		_videoContext->VideoProcessorSetOutputTargetRect(_videoProcessor.Get(), TRUE, &target);
 		return 0;
 	}
 
 	int32_t CreateVideoProcessor()
 	{
+		// Input size is only a hint: the capture size may differ and the processor scales it.
 		D3D11_VIDEO_PROCESSOR_CONTENT_DESC contentDesc{};
 		contentDesc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
 		contentDesc.InputWidth = _options.width;
@@ -289,12 +295,6 @@ private:
 			hr = _videoDevice->CreateVideoProcessor(_vpEnumerator.Get(), 0, _videoProcessor.ReleaseAndGetAddressOf());
 		if (FAILED(hr))
 			return Fail("CreateVideoProcessor failed: " + HrError(hr));
-
-		D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputDesc{};
-		inputDesc.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
-		hr = _videoDevice->CreateVideoProcessorInputView(_inputTexture.Get(), _vpEnumerator.Get(), &inputDesc, _inputView.ReleaseAndGetAddressOf());
-		if (FAILED(hr))
-			return Fail("CreateVideoProcessorInputView failed: " + HrError(hr));
 
 		// Full-range RGB in, BT.709 limited-range YCbCr out (matches the color tags set on the encoder).
 		D3D11_VIDEO_PROCESSOR_COLOR_SPACE inputColor{};
@@ -616,7 +616,6 @@ private:
 		_inputView.Reset();
 		_videoProcessor.Reset();
 		_vpEnumerator.Reset();
-		_inputSurface.Reset();
 		_inputTexture.Reset();
 	}
 
@@ -629,9 +628,7 @@ private:
 	uint32_t _vendorId = 0;
 
 	FrEncoderOptions _options{};
-	ComPtr<ID3D11Texture2D> _inputTexture;
-	ComPtr<IDXGISurface> _inputSurface;
-	int32_t _surfaceGeneration = 0;
+	ComPtr<ID3D11Texture2D> _inputTexture; // capture texture the input view was created for
 	ComPtr<ID3D11VideoProcessorEnumerator> _vpEnumerator;
 	ComPtr<ID3D11VideoProcessor> _videoProcessor;
 	ComPtr<ID3D11VideoProcessorInputView> _inputView;
@@ -665,19 +662,14 @@ FR_API int32_t FR_CALL FrEncoder_Open(FrEncoder* encoder, const FrEncoderOptions
 	return encoder && options ? encoder->Open(*options) : -1;
 }
 
-FR_API void* FR_CALL FrEncoder_GetInputSurface(FrEncoder* encoder)
+FR_API int32_t FR_CALL FrEncoder_Encode(FrEncoder* encoder, FrCapture* capture, int32_t forceKeyframe, int64_t timestampUs, FrPacket* outPacket)
 {
-	return encoder ? encoder->InputSurface() : nullptr;
+	return encoder && outPacket ? encoder->Encode(capture, forceKeyframe != 0, timestampUs, outPacket) : -1;
 }
 
-FR_API int32_t FR_CALL FrEncoder_GetSurfaceGeneration(FrEncoder* encoder)
+ID3D11Device* FrInternal_EncoderDevice(FrEncoder* encoder)
 {
-	return encoder ? encoder->SurfaceGeneration() : 0;
-}
-
-FR_API int32_t FR_CALL FrEncoder_Encode(FrEncoder* encoder, int32_t forceKeyframe, int64_t timestampUs, FrPacket* outPacket)
-{
-	return encoder && outPacket ? encoder->Encode(forceKeyframe != 0, timestampUs, outPacket) : -1;
+	return encoder ? encoder->Device() : nullptr;
 }
 
 FR_API const char* FR_CALL FrEncoder_GetEncoderName(FrEncoder* encoder)

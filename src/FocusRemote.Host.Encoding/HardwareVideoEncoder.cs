@@ -6,9 +6,9 @@ using FocusRemote.Host.Encoding.Native.Models;
 namespace FocusRemote.Host.Encoding;
 
 /// <summary>
-/// Zero-copy screen encoder: a capture library renders into <see cref="InputSurface"/> (shared D3D11 BGRA texture
-/// on DXGI adapter 0), then <see cref="Encode"/> converts it to NV12 on the GPU and runs the FFmpeg hardware encoder.
-/// Not thread-safe: call Open/Render/Encode from one thread. Owns its native context; dispose it.
+/// Zero-copy screen encoder on a D3D11 device of DXGI adapter 0: <see cref="Encode"/> takes the latest frame of a
+/// <see cref="ScreenCapture"/> (same device), converts/scales it to NV12 on the GPU and runs the FFmpeg hardware encoder.
+/// Not thread-safe: call Open/Poll/Encode from one thread. Owns its native context; dispose it.
 /// </summary>
 public sealed class HardwareVideoEncoder : IDisposable
 {
@@ -35,14 +35,12 @@ public sealed class HardwareVideoEncoder : IDisposable
 	public string EncoderName => ReadString(EncoderNativeMethods.FrEncoder_GetEncoderName(_handle));
 	/// <summary>False when the encoder needs system-memory frames (NV12 read back from the GPU).</summary>
 	public bool IsZeroCopy => EncoderNativeMethods.FrEncoder_IsZeroCopy(_handle) != 0;
-	/// <summary>IDXGISurface* to pass to <c>WinrtGraphicCapture.Render</c>. Borrowed: valid until the next <see cref="Open"/> or <see cref="Dispose"/>.</summary>
-	public IntPtr InputSurface => EncoderNativeMethods.FrEncoder_GetInputSurface(_handle);
-	/// <summary>Changes whenever <see cref="Open"/> recreates <see cref="InputSurface"/>.</summary>
-	public int SurfaceGeneration => EncoderNativeMethods.FrEncoder_GetSurfaceGeneration(_handle);
+
+	internal EncoderSafeHandle Handle => _handle;
 
 	string LastError => ReadString(EncoderNativeMethods.FrEncoder_GetLastError(_handle));
 
-	/// <summary>Opens (or re-opens with new settings) the encoder and recreates <see cref="InputSurface"/>.</summary>
+	/// <summary>Opens (or re-opens with new settings) the encoder.</summary>
 	public void Open(VideoEncoderOptions options)
 	{
 		ArgumentNullException.ThrowIfNull(options);
@@ -69,12 +67,14 @@ public sealed class HardwareVideoEncoder : IDisposable
 	}
 
 	/// <summary>
-	/// Encodes what is currently in <see cref="InputSurface"/>.
+	/// Encodes the latest frame of <paramref name="capture"/> (scaled to the encoder size; needs <see cref="ScreenCapture.HasFrame"/>).
+	/// Can be called again without a new frame to repeat the last picture.
 	/// Returns false when the encoder buffered the frame without output (not expected with the low-latency settings).
 	/// </summary>
-	public unsafe bool Encode(bool forceKeyframe, long timestampUs, out EncodedPacket packet)
+	public unsafe bool Encode(ScreenCapture capture, bool forceKeyframe, long timestampUs, out EncodedPacket packet)
 	{
-		int result = EncoderNativeMethods.FrEncoder_Encode(_handle, forceKeyframe ? 1 : 0, timestampUs, out NativePacket native);
+		ArgumentNullException.ThrowIfNull(capture);
+		int result = EncoderNativeMethods.FrEncoder_Encode(_handle, capture.Handle, forceKeyframe ? 1 : 0, timestampUs, out NativePacket native);
 		if (result < 0)
 			throw new VideoEncoderException(LastError);
 		if (result == 0)

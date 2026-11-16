@@ -14,7 +14,7 @@ Phần mềm điều khiển máy tính Windows từ xa: chỉ xem/điều khi�
 ## Thành phần
 
 1. **FocusRemote.Host** (app Windows, .NET 8, **WPF** – chốt 2026-11-16)
-   - Liệt kê cửa sổ/màn hình (`TqkLibrary.WindowCapture`).
+   - Liệt kê cửa sổ/màn hình (Host tự `EnumWindows`/`EnumDisplayMonitors`).
    - Capture khung hình → encode H.264.
    - Âm thanh (`TqkLibrary.AudioCapture`) – giai đoạn 2.
    - Nhận input từ viewer → `SendInput`, quy đổi toạ độ theo cửa sổ/màn hình đang xem.
@@ -60,7 +60,7 @@ FocusRemote/
 
 | Thư viện | NuGet | Kết luận |
 |---|---|---|
-| `TqkLibrary.WindowCapture` | Có (1.0.8, netstandard2.0, native x64/x86) | Dùng. `WinrtGraphicCapture` (window + monitor, `MaxFps`, ẩn/hiện cursor, viền), `DesktopDuplicationCapture` (monitor), `HdcCapture` (dự phòng). Lấy khung qua `Capture()` → `Bitmap` (CPU) hoặc `Render(surface)` → D3D (GPU). `BaseCapture.Monitors` liệt kê màn hình. **Không** có liệt kê cửa sổ → Host tự `EnumWindows`. **Không** có encoder. |
+| `TqkLibrary.WindowCapture` | Có (1.0.8, netstandard2.0, native x64/x86) | Dùng. `WinrtGraphicCapture` (window + monitor, `MaxFps`, ẩn/hiện cursor, viền), `DesktopDuplicationCapture` (monitor), `HdcCapture` (dự phòng). Lấy khung qua `Capture()` → `Bitmap` (CPU) hoặc `Render(surface)` → D3D (GPU). `BaseCapture.Monitors` liệt kê màn hình. **Không** có liệt kê cửa sổ → Host tự `EnumWindows`. **Không** có encoder. Video **không còn dùng** thư viện này: capture chuyển vào DLL encoder (cùng D3D11 device, xem Encoder-vi.md). |
 | `TqkLibrary.AudioCapture` | Có (1.0.7, net8.0-windows7.0) | Dùng ở giai đoạn 2. WASAPI, `CaptureEndpoint` / `CaptureProcess(pid)` (bắt tiếng riêng tiến trình của cửa sổ đang xem) → `AudioCaptureStream` PCM. Chưa có encoder Opus/AAC. |
 | `TqkLibrary.Streams` | Có (1.0.26) | Có thể dùng `MultiStreamHelper<TId>` để ghép nhiều kênh (video/input/điều khiển) trên một stream, nhưng WebViewer (JS) không có bản tương ứng → nhiều khả năng tự định nghĩa khung gói trong Protocol cho đơn giản. |
 | `TqkLibrary.StreamRelay` | **Không** có NuGet (repo public) | **Không dùng.** Relay này demux bằng FFmpeg ở server, GOP buffer, phát một chiều theo GUID → trái với E2E (relay không được đọc nội dung) và không có kênh ngược cho input. Relay của FocusRemote tự viết: ghép 2 WebSocket theo Id, chuyển byte nguyên vẹn. Có thể tham khảo cách đóng khung/backpressure. |

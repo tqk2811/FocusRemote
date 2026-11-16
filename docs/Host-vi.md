@@ -45,7 +45,7 @@ node src/FocusRemote.E2E/browser/run-e2e.mjs --mode lan --out <thư mục tạm>
 - `--mode relay`: Relay `http://127.0.0.1:<cổng trống>` (localhost là secure context). `--mode lan`: harness bật LAN HTTPS tự ký, Chrome chạy với `--ignore-certificate-errors`.
 - `--source m:0` (mặc định), `w:<hwnd>` hoặc `first-window`; `--no-audio`; `--headful` để xem cửa sổ Chrome.
 - Kết quả ghi `result-<mode>.json` + log `relay.log`/`host.log`/`chrome.log` trong `--out`. Script chỉ dừng các tiến trình chính nó tạo.
-- Cần desktop session và GPU D3D11 (capture + encoder phần cứng thật). Màn hình đứng yên thì WinRT chỉ đưa ~1 khung/s, nên đợi đủ 10 khung có thể mất 10–20 s.
+- Cần desktop session và GPU D3D11 (capture + encoder phần cứng thật). Màn hình đứng yên thì Host encode lại khung cuối mỗi 200 ms, nên 10 khung đến trong ~2 s.
 - LAN listen `0.0.0.0` nên lần đầu Windows Firewall có thể hỏi quyền cho `FocusRemote.E2E.exe`; bấm Cancel vẫn chạy được qua loopback.
 
 `window.__frStats` (getter, chỉ đọc) có trong WebViewer: `authenticated`, `streaming`, `sources`, `videoFramesReceived/Decoded/Drawn`, `videoDecoderErrors`, `audioPacketsReceived`, `audioFramesDecoded`, `audioDecoderErrors`… dùng được khi gỡ lỗi từ console.

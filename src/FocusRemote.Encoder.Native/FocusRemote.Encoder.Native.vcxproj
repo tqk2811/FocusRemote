@@ -64,7 +64,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(FFmpegPackageDir)build\native\win\x64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>avcodec.lib;avutil.lib;d3d11.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>avcodec.lib;avutil.lib;d3d11.lib;dxgi.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -85,10 +85,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="FocusRemoteEncoder.h" />
+    <ClInclude Include="FrInternal.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FocusRemoteAudioEncoder.cpp" />
+    <ClCompile Include="FocusRemoteCapture.cpp" />
     <ClCompile Include="FocusRemoteEncoder.cpp" />
   </ItemGroup>
   <Target Name="CheckFFmpegPackage" BeforeTargets="ClCompile">

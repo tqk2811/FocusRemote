@@ -18,13 +18,7 @@ internal static class EncoderNativeMethods
 	internal static extern int FrEncoder_Open(EncoderSafeHandle encoder, in NativeEncoderOptions options);
 
 	[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-	internal static extern IntPtr FrEncoder_GetInputSurface(EncoderSafeHandle encoder);
-
-	[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-	internal static extern int FrEncoder_GetSurfaceGeneration(EncoderSafeHandle encoder);
-
-	[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-	internal static extern int FrEncoder_Encode(EncoderSafeHandle encoder, int forceKeyframe, long timestampUs, out NativePacket packet);
+	internal static extern int FrEncoder_Encode(EncoderSafeHandle encoder, CaptureSafeHandle capture, int forceKeyframe, long timestampUs, out NativePacket packet);
 
 	[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
 	internal static extern IntPtr FrEncoder_GetEncoderName(EncoderSafeHandle encoder);
