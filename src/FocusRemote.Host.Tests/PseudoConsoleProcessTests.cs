@@ -21,6 +21,23 @@ public sealed class PseudoConsoleProcessTests
         int exitCode = await listener.Exited.Task.WaitAsync(_timeout);
         Assert.Equal(5, exitCode);
         Assert.Contains("FR_MARK_42", listener.Text);
+        // Input after the exit is discarded, not reported as dropped (queue full).
+        Assert.True(process.Write("dir\r\n"u8.ToArray()));
+    }
+
+    [Fact]
+    public async Task ExitWhileOutputBlocked_ReportsExitAfterAllOutput()
+    {
+        // The first output callback blocks longer than the waiter's join timeout (a stalled link with backpressure);
+        // cmd exits meanwhile. The exit must still come after the rest of the output.
+        string cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+        var listener = new RecordingListener { FirstOutputDelay = TimeSpan.FromSeconds(6) };
+        using var process = new PseudoConsoleProcess("\"" + cmd + "\" /q /k", Path.GetTempPath(), 80, 25, listener);
+        process.Write(System.Text.Encoding.ASCII.GetBytes("echo FR_MARK_%COMPUTERNAME:~0,0%42\r\nexit 5\r\n"));
+
+        int exitCode = await listener.Exited.Task.WaitAsync(_timeout);
+        Assert.Equal(5, exitCode);
+        Assert.Contains("FR_MARK_42", listener.TextAtExit);
     }
 
     [Fact]
@@ -46,12 +63,27 @@ public sealed class PseudoConsoleProcessTests
             get { lock (_output) return System.Text.Encoding.UTF8.GetString(_output.ToArray()); }
         }
 
+        private bool _delayed;
+
+        public TimeSpan FirstOutputDelay { get; init; }
+
+        public string? TextAtExit { get; private set; }
+
         public void OnOutput(ReadOnlySpan<byte> data)
         {
+            if (!_delayed)
+            {
+                _delayed = true;
+                Thread.Sleep(FirstOutputDelay);
+            }
             lock (_output)
                 _output.Write(data);
         }
 
-        public void OnExited(int exitCode) => Exited.TrySetResult(exitCode);
+        public void OnExited(int exitCode)
+        {
+            TextAtExit = Text;
+            Exited.TrySetResult(exitCode);
+        }
     }
 }
