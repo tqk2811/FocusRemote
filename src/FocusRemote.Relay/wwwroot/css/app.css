@@ -136,6 +136,37 @@ button.primary {
   scrollbar-width: none;
 }
 
+/* Fullscreen: the toolbar slides out of the way (overlaying, so the video keeps its size); a small handle brings it back. */
+.toolbar-handle { display: none; }
+
+.session.is-fullscreen .toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  transform: translateY(-100%);
+  transition: transform .2s ease-out;
+}
+
+.session.is-fullscreen.toolbar-open .toolbar { transform: none; }
+
+.session.is-fullscreen:not(.toolbar-open) .toolbar-handle {
+  display: block;
+  position: absolute;
+  top: env(safe-area-inset-top, 0);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 21;
+  padding: 0 18px;
+  min-height: 0;
+  line-height: 1.4;
+  border: 0;
+  border-radius: 0 0 8px 8px;
+  background: rgba(17, 24, 39, .55);
+  color: #fff;
+}
+
 .toolbar button, .toolbar select {
   background: transparent;
   border-color: #4b5563;
