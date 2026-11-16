@@ -37,4 +37,8 @@ public static class HandshakeFrames
     public static byte[] BuildAuthFail() => [(byte)FrameKind.AuthFail];
 
     public static bool IsAuthFail(ReadOnlySpan<byte> frame) => frame.Length == 1 && frame[0] == (byte)FrameKind.AuthFail;
+
+    public static byte[] BuildBusy() => [(byte)FrameKind.Busy];
+
+    public static bool IsBusy(ReadOnlySpan<byte> frame) => frame.Length == 1 && frame[0] == (byte)FrameKind.Busy;
 }

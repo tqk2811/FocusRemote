@@ -12,7 +12,7 @@ export const PROBE_TEXT = 'FocusRemote/v1/probe';
 export const MIN_PASSWORD_LENGTH = 10;
 export const ID_PATTERN = /^[A-Za-z0-9_-]{3,64}$/;
 
-export const FrameKind = Object.freeze({ HelloViewer: 0x01, HelloHost: 0x02, AuthFail: 0x03, Sealed: 0x10 });
+export const FrameKind = Object.freeze({ HelloViewer: 0x01, HelloHost: 0x02, AuthFail: 0x03, Busy: 0x04, Sealed: 0x10 });
 export const Channel = Object.freeze({ Control: 0, Video: 1, Input: 2, Audio: 3, Terminal: 4 });
 export const ControlType = Object.freeze({
   AuthProbe: 0x01, AuthOk: 0x02, Capabilities: 0x03,

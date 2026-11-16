@@ -28,6 +28,7 @@ Byte đầu tiên là `kind`:
 | `0x01` | HelloViewer | viewer → host | `version u8` (=1), `nonceV` 32B ngẫu nhiên |
 | `0x02` | HelloHost | host → viewer | `version u8` (=1), `nonceH` 32B ngẫu nhiên |
 | `0x03` | AuthFail | host → viewer | rỗng; sau đó host không trả lời gì thêm cho viewer này |
+| `0x04` | Busy | host → viewer | rỗng; Host đang phục vụ viewer khác, gửi ngay khi viewer tới (trước hoặc sau bắt tay) rồi không trả lời gì thêm; viewer tự đóng (qua relay Host không đóng được socket viewer) |
 | `0x10` | Sealed | hai chiều | `counter u64` (8B), `ciphertext + tag 16B` |
 
 ## 3. Khoá

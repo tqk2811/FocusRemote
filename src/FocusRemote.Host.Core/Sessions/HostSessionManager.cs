@@ -98,7 +98,7 @@ public sealed class HostSessionManager
             if (IsBusy)
             {
                 _log.Info($"Viewer {link.Origin}: refused before handshake, another viewer is connected");
-                link.Close();
+                await RefuseBusyAsync(link, cancellationToken);
                 return;
             }
             SecureSession? session = await HandshakeAsync(link, cancellationToken);
@@ -120,7 +120,7 @@ public sealed class HostSessionManager
             if (session is null)
             {
                 _log.Info($"Viewer {link.Origin}: refused, another viewer is connected");
-                link.Close();
+                await RefuseBusyAsync(link, cancellationToken);
                 return;
             }
 
@@ -218,6 +218,22 @@ public sealed class HostSessionManager
             link.Close();
             return null;
         }
+    }
+
+    /// <summary>Tells the viewer the host is busy (protocol §2), then closes; a relay viewer cannot be closed by the host, so it must close itself.</summary>
+    private async Task RefuseBusyAsync(IViewerLink link, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            await link.SendAsync(HandshakeFrames.BuildBusy(), timeout.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _log.Info($"Viewer {link.Origin}: could not send Busy ({ex.Message})");
+        }
+        link.Close();
     }
 
     private static async Task<byte[]?> ReadAsync(IViewerLink link, CancellationToken cancellationToken)
