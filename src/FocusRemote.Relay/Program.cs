@@ -1,3 +1,4 @@
+using System.Net;
 using System.Threading.RateLimiting;
 using FocusRemote.Relay.Relay;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -16,9 +17,23 @@ if (relayOptions.UseForwardedHeaders)
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
         options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-        // Trust the proxy in front of us (deployment decides which proxies can reach the relay).
+        // Behind Cloudflare: "CF-Connecting-IP" carries the single real client IP.
+        options.ForwardedForHeaderName = relayOptions.ForwardedForHeader;
         options.KnownNetworks.Clear();
         options.KnownProxies.Clear();
+        // Empty = trust whatever proxy reaches us (the firewall must then allow only the proxy).
+        foreach (string entry in relayOptions.TrustedProxies)
+        {
+            if (entry.Contains('/'))
+            {
+                string[] parts = entry.Split('/', 2);
+                options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(IPAddress.Parse(parts[0]), int.Parse(parts[1])));
+            }
+            else
+            {
+                options.KnownProxies.Add(IPAddress.Parse(entry));
+            }
+        }
     });
 }
 

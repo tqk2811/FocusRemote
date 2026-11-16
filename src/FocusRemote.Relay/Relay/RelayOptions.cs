@@ -17,6 +17,12 @@ public sealed class RelayOptions
     /// <summary>Honor X-Forwarded-For/Proto (enable only behind a trusted reverse proxy).</summary>
     public bool UseForwardedHeaders { get; set; }
 
+    /// <summary>Header holding the client IP when <see cref="UseForwardedHeaders"/> is on; "CF-Connecting-IP" behind Cloudflare.</summary>
+    public string ForwardedForHeader { get; set; } = "X-Forwarded-For";
+
+    /// <summary>Proxies whose forwarded headers are honored (IP or CIDR, e.g. Cloudflare ranges). Empty = any proxy.</summary>
+    public string[] TrustedProxies { get; set; } = [];
+
     /// <summary>Capacity (in messages) of each per-direction forwarding queue.</summary>
     public int QueueCapacity { get; set; } = 64;
 }
