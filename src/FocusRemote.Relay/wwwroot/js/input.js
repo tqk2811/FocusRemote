@@ -390,7 +390,9 @@ export class InputController {
       y = rect.top + this.cursor.y * rect.height;
     }
     const r = this.ring;
-    r.style.transform = `translate(${x - parent.left}px, ${y - parent.top}px)`;
+    // Use `translate`, not `transform`: the keyframes animate `scale`, which CSS applies on top of
+    // `transform` and would scale the offset too, sliding the ring diagonally.
+    r.style.translate = `${x - parent.left}px ${y - parent.top}px`;
     r.classList.remove('is-on');
     void r.offsetWidth; // restart the animation
     r.classList.add('is-on');
