@@ -25,7 +25,7 @@ const el = {
   loginView: $('loginView'), loginForm: $('loginForm'), relay: $('relayInput'), id: $('idInput'),
   password: $('passwordInput'), loginError: $('loginError'), loginStatus: $('loginStatus'),
   connect: $('connectButton'), envWarning: $('envWarning'),
-  sessionView: $('sessionView'), sourcesButton: $('sourcesButton'), hostName: $('hostName'), latency: $('latency'),
+  sessionView: $('sessionView'), toolbar: document.querySelector('#sessionView > .toolbar'), toolbarHandle: $('toolbarHandle'),sourcesButton: $('sourcesButton'), hostName: $('hostName'), latency: $('latency'),
   touchMode: $('touchModeSelect'), inputMode: $('inputModeSelect'), keyboard: $('keyboardButton'), mute: $('muteButton'),
   fullscreen: $('fullscreenButton'), disconnect: $('disconnectButton'),
   sourcesPanel: $('sourcesPanel'), refreshSources: $('refreshSourcesButton'), bitrate: $('bitrateSelect'),
@@ -452,6 +452,31 @@ function toggleFullscreen() {
   }
 }
 
+const TOOLBAR_AUTO_HIDE_MS = 4000;
+let toolbarHideTimer = 0;
+
+/** Fullscreen collapses the toolbar; leaving fullscreen restores it. */
+function onFullscreenChange() {
+  const full = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  el.sessionView.classList.toggle('is-fullscreen', full);
+  setToolbarOpen(false);
+  input.refreshOverlay();
+}
+
+/** Shows the collapsed toolbar for a few seconds (it stays while a control inside has focus, e.g. an open select). */
+function setToolbarOpen(open) {
+  clearTimeout(toolbarHideTimer);
+  el.sessionView.classList.toggle('toolbar-open', open);
+  if (!open || !el.sessionView.classList.contains('is-fullscreen')) return;
+  const scheduleHide = () => {
+    toolbarHideTimer = setTimeout(() => {
+      if (el.toolbar.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') scheduleHide();
+      else el.sessionView.classList.remove('toolbar-open');
+    }, TOOLBAR_AUTO_HIDE_MS);
+  };
+  scheduleHide();
+}
+
 // ---------- init ----------
 
 function init() {
@@ -502,7 +527,12 @@ function init() {
   }
   window.addEventListener('resize', () => input.refreshOverlay());
   trackVisualViewport();
-  document.addEventListener('fullscreenchange', () => input.refreshOverlay());
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+  el.toolbarHandle.addEventListener('click', () => setToolbarOpen(true));
+  // Any use of the toolbar keeps it open a while longer.
+  el.toolbar.addEventListener('pointerdown', () => setToolbarOpen(true));
+  el.toolbar.addEventListener('change', () => setToolbarOpen(true));
   window.addEventListener('pagehide', () => { input.releaseAll(); stopConnection(); });
   // Keep a reference for debugging from the console.
   globalThis.focusRemote = { state, video, audio, input, terminal, InputType };
