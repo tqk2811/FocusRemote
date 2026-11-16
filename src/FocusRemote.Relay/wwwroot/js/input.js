@@ -5,11 +5,12 @@ import {
   InputType, MouseButton,
   buildMouseMove, buildMouseButton, buildMouseWheel, buildKey, buildText,
 } from './protocol.js';
+import { TouchGesture, LONG_PRESS_MS, TAP_SLOP_PX } from './gesture.js';
 
-const LONG_PRESS_MS = 550;
-const TAP_SLOP_PX = 10;
 const TOUCH_SCROLL_FACTOR = 4;      // wheel units per CSS pixel of two-finger movement
-const TOUCHPAD_SPEED = 1.6;         // cursor speed multiplier in touchpad mode
+const MOUSE_MODE_SPEED = 1.6;       // relative cursor speed multiplier in 'mouse' touch mode
+const PINCH_THRESHOLD_PX = 24;      // finger distance change that turns a two-finger gesture into a pinch
+const CURSOR_EDGE_MARGIN_PX = 40;   // zoomed mouse-mode view pans to keep the cursor this far from the edge
 const SOFT_SENTINEL = ' ';     // kept in the hidden input so Backspace always fires an input event
 
 // DOM MouseEvent.button -> protocol button
@@ -31,32 +32,56 @@ export function wheelToUnits(delta, deltaMode) {
   return -delta * perUnit;
 }
 
+/**
+ * Classifies a two-finger gesture: 'pinch' when the finger distance changed by more than the
+ * threshold, 'scroll' when the midpoint moved (parallel movement), otherwise null (undecided).
+ */
+export function classifyTwoFinger(startDist, dist, startMid, mid, pinchThreshold = PINCH_THRESHOLD_PX, slop = TAP_SLOP_PX) {
+  if (Math.abs(dist - startDist) > pinchThreshold) return 'pinch';
+  if (Math.hypot(mid.x - startMid.x, mid.y - startMid.y) > slop) return 'scroll';
+  return null;
+}
+
+/**
+ * Two-finger scroll, "natural" direction (content follows the fingers), both axes at once.
+ * Finger movement (CSS px) -> wheel units (protocol: dy > 0 = up, dx > 0 = right):
+ * fingers up -> scroll down, fingers left -> scroll right.
+ */
+export function twoFingerScrollDelta(fingerDx, fingerDy, factor = TOUCH_SCROLL_FACTOR) {
+  return { dx: -fingerDx * factor, dy: fingerDy * factor };
+}
+
 export class InputController {
   /**
    * @param {{ surface: HTMLElement, cursor: HTMLElement, softInput: HTMLTextAreaElement,
    *           getVideoRect: () => DOMRect|null, send: (type: number, payload: Uint8Array) => void,
-   *           isActive: () => boolean }} options
+   *           isActive: () => boolean, zoom?: import('./viewzoom.js').ViewZoom }} options
    */
   constructor(options) {
     this.o = options;
-    this.mode = 'direct'; // touch mode: 'direct' | 'touchpad'
+    this.mode = 'touch'; // touch mode: 'touch' (tap at the finger) | 'mouse' (relative cursor)
     this.pressedKeys = new Set();
     this.pressedButtons = new Set();
     this.pendingMove = null;
     this.moveRaf = 0;
     this.wheelAcc = { x: 0, y: 0 };
-    this.cursor = { x: 0.5, y: 0.5 }; // touchpad cursor, normalized 0..1
+    this.cursor = { x: 0.5, y: 0.5 }; // mouse-mode cursor, normalized 0..1
     this.touch = null;
+    this.gesture = new TouchGesture();
+    this.dragging = false;      // left button held by a long-press drag
+    this.lastTouchPoint = null; // client point of the last touch-mode finger: pinch anchor
+    this.ring = null;           // long-press feedback ring, created lazily
     this._bind();
   }
 
   setTouchMode(mode) {
-    this.mode = mode;
+    this._cancelTouch();
+    this.mode = mode === 'mouse' ? 'mouse' : 'touch';
     this._updateCursorOverlay();
   }
 
   releaseAll() {
-    if (this.pressedKeys.size || this.pressedButtons.size || this.touch) {
+    if (this.pressedKeys.size || this.pressedButtons.size || this.touch || this.dragging) {
       this.pressedKeys.clear();
       this.pressedButtons.clear();
       this._cancelTouch();
@@ -207,6 +232,9 @@ export class InputController {
   }
 
   // ---------- touch ----------
+  // One finger goes through the pure TouchGesture recognizer (js/gesture.js); its actions are
+  // mapped per mode in _applyGesture. Two fingers, both modes: pinch = local zoom, parallel swipe =
+  // natural remote scroll, two-finger tap (no movement) = right click (kept: harmless, handy).
 
   _onTouchStart(e) {
     if (!this.o.isActive()) return;
@@ -214,19 +242,31 @@ export class InputController {
     const touches = e.touches;
     if (!this.touch) {
       const t = touches[0];
-      this.touch = {
-        fingers: 1, maxFingers: 1, startX: t.clientX, startY: t.clientY, lastX: t.clientX, lastY: t.clientY,
-        moved: false, dragging: false, longPressed: false, startTime: performance.now(), scrollMid: null,
-      };
-      this.touch.timer = setTimeout(() => this._onLongPress(), LONG_PRESS_MS);
+      this.touch = { maxFingers: 1, startX: t.clientX, startY: t.clientY, moved: false, scrollMid: null };
+      if (this.mode === 'touch') this.lastTouchPoint = { x: t.clientX, y: t.clientY };
+      this._applyGesture(this.gesture.down(t.clientX, t.clientY, performance.now()));
+      this.touch.timer = setTimeout(() => this._applyGesture(this.gesture.longPress()), LONG_PRESS_MS);
     }
     if (touches.length >= 2) {
       clearTimeout(this.touch.timer);
-      if (this.touch.dragging) this._endDrag();
-      this.touch.fingers = touches.length;
+      this._applyGesture(this.gesture.cancel());
       this.touch.maxFingers = Math.max(this.touch.maxFingers, touches.length);
       this.touch.scrollMid = midpoint(touches);
+      this._startTwoFinger(touches);
     }
+  }
+
+  _startTwoFinger(touches) {
+    const st = this.touch;
+    const zoom = this.o.zoom;
+    st.gesture = st.gesture === 'pinch' ? 'pinch' : null; // a pinch stays a pinch when fingers change
+    st.startDist = distance(touches);
+    st.startMid = midpoint(touches);
+    st.pinchMid = st.startMid;
+    st.startZoom = zoom ? zoom.view.zoom : 1;
+    // Touch mode zooms around the last touch point; fall back to the pinch centre.
+    const a = this.lastTouchPoint || st.startMid;
+    st.touchAnchor = zoom ? zoom.toStage(a.x, a.y) : null;
   }
 
   _onTouchMove(e) {
@@ -236,93 +276,161 @@ export class InputController {
     const touches = e.touches;
     if (touches.length >= 2) {
       const mid = midpoint(touches);
-      if (st.scrollMid) {
+      if (st.startDist === undefined) this._startTwoFinger(touches);
+      if (!st.gesture) st.gesture = classifyTwoFinger(st.startDist, distance(touches), st.startMid, mid);
+      if (st.gesture === 'pinch') {
+        this._pinch(touches, mid);
+        st.scrollMid = mid;
+        st.moved = true;
+        return;
+      }
+      if (st.gesture === 'scroll' && st.scrollMid) {
         const anchor = this._anchorPoint(mid);
-        if (anchor) this._sendWheel(-(mid.x - st.scrollMid.x) * TOUCH_SCROLL_FACTOR, (mid.y - st.scrollMid.y) * TOUCH_SCROLL_FACTOR, anchor);
+        const d = twoFingerScrollDelta(mid.x - st.scrollMid.x, mid.y - st.scrollMid.y);
+        if (anchor) this._sendWheel(d.dx, d.dy, anchor);
       }
       st.scrollMid = mid;
-      st.moved = true;
+      if (st.gesture) st.moved = true; // undecided jitter still counts as a two-finger tap
       return;
     }
     if (st.maxFingers > 1) return; // lifted one finger of a two-finger gesture
     const t = touches[0];
-    if (!st.moved && Math.hypot(t.clientX - st.startX, t.clientY - st.startY) > TAP_SLOP_PX) {
-      st.moved = true;
-      clearTimeout(st.timer);
-      if (this.mode === 'direct' && !st.longPressed) {
-        // press-and-move in direct mode drags with the left button
-        const p = this._point(st.startX, st.startY);
-        if (p) {
-          this._send(InputType.MouseMove, buildMouseMove(p.x, p.y));
-          this._send(InputType.MouseButton, buildMouseButton(MouseButton.Left, true, p.x, p.y));
-          st.dragging = true;
-        }
-      }
-    }
-    if (st.moved) {
-      if (this.mode === 'direct') {
-        const p = this._point(t.clientX, t.clientY);
-        if (p) this._send(InputType.MouseMove, buildMouseMove(p.x, p.y));
-      } else {
-        const rect = this.o.getVideoRect();
-        if (rect) {
-          this.cursor.x = clamp01(this.cursor.x + (t.clientX - st.lastX) / rect.width * TOUCHPAD_SPEED);
-          this.cursor.y = clamp01(this.cursor.y + (t.clientY - st.lastY) / rect.height * TOUCHPAD_SPEED);
-          this._sendCursorMove();
-        }
-      }
-    }
-    st.lastX = t.clientX;
-    st.lastY = t.clientY;
+    const actions = this.gesture.move(t.clientX, t.clientY);
+    if (actions.length) clearTimeout(st.timer);
+    this._applyGesture(actions);
   }
 
   _onTouchEnd(e) {
     const st = this.touch;
     if (!st) return;
     e.preventDefault();
-    if (e.touches.length > 0) { st.fingers = e.touches.length; st.scrollMid = e.touches.length >= 2 ? midpoint(e.touches) : null; return; }
+    if (e.touches.length > 0) {
+      st.scrollMid = e.touches.length >= 2 ? midpoint(e.touches) : null;
+      if (e.touches.length >= 2) this._startTwoFinger(e.touches);
+      return;
+    }
     clearTimeout(st.timer);
     this.touch = null;
-    if (!this.o.isActive()) return;
-    if (st.dragging) { this._endDrag(); return; }
-    if (st.longPressed || st.moved) return;
-    const twoFingerTap = st.maxFingers === 2;
-    if (this.mode === 'direct') {
-      const p = this._point(st.startX, st.startY);
-      if (p && p.inside) this._click(twoFingerTap ? MouseButton.Right : MouseButton.Left, p);
-    } else {
-      this._click(twoFingerTap ? MouseButton.Right : MouseButton.Left, this._cursorPoint());
-    }
-  }
-
-  _onLongPress() {
-    const st = this.touch;
-    if (!st || st.moved || st.maxFingers > 1) return;
-    st.longPressed = true;
-    navigator.vibrate?.(20);
-    if (this.mode === 'direct') {
-      const p = this._point(st.startX, st.startY);
+    if (!this.o.isActive()) { this._applyGesture(this.gesture.cancel()); return; }
+    if (st.maxFingers === 1) {
+      const t = e.changedTouches[0];
+      if (this.mode === 'touch' && t) this.lastTouchPoint = { x: t.clientX, y: t.clientY };
+      this._applyGesture(this.gesture.up(performance.now()));
+    } else if (st.maxFingers === 2 && !st.moved) {
+      const p = this.mode === 'mouse' ? this._cursorPoint() : this._point(st.startX, st.startY);
       if (p && p.inside) this._click(MouseButton.Right, p);
-    } else {
-      // touchpad: long-press then move = drag with the left button
-      const p = this._cursorPoint();
-      this._send(InputType.MouseButton, buildMouseButton(MouseButton.Left, true, p.x, p.y));
-      st.dragging = true;
-      st.moved = true;
     }
   }
 
-  _endDrag() {
-    const p = this.mode === 'direct' && this.touch ? this._point(this.touch.lastX, this.touch.lastY) : this._cursorPoint();
-    this._send(InputType.MouseButton, buildMouseButton(MouseButton.Left, false, p ? p.x : 0, p ? p.y : 0));
-    if (this.touch) this.touch.dragging = false;
+  /** Maps recognizer actions: 'touch' acts at the finger, 'mouse' at the relative virtual cursor. */
+  _applyGesture(actions) {
+    const mouse = this.mode === 'mouse';
+    for (const a of actions) {
+      switch (a.kind) {
+        case 'longPress':
+          navigator.vibrate?.(20);
+          this._flashRing(mouse ? null : a);
+          break;
+        case 'click': {
+          const p = mouse ? this._cursorPoint() : this._point(a.x, a.y);
+          if (p && p.inside) this._click(a.button === 'right' ? MouseButton.Right : MouseButton.Left, p);
+          break;
+        }
+        case 'pan':
+          if (mouse) this._moveCursorBy(a.dx, a.dy);
+          else { this.o.zoom?.panBy(a.dx, a.dy); this._updateCursorOverlay(); }
+          break;
+        case 'dragStart': {
+          const p = mouse ? this._cursorPoint() : this._point(a.x, a.y);
+          if (!p || !p.inside) break;
+          this._send(InputType.MouseMove, buildMouseMove(p.x, p.y));
+          this._send(InputType.MouseButton, buildMouseButton(MouseButton.Left, true, p.x, p.y));
+          this.dragging = true;
+          break;
+        }
+        case 'dragMove':
+          if (!this.dragging) break;
+          if (mouse) this._moveCursorBy(a.dx, a.dy);
+          else { const p = this._point(a.x, a.y); if (p) this._send(InputType.MouseMove, buildMouseMove(p.x, p.y)); }
+          break;
+        case 'dragEnd': {
+          if (!this.dragging) break;
+          this.dragging = false;
+          const p = (mouse ? this._cursorPoint() : this._point(a.x, a.y)) || { x: 0, y: 0 };
+          this._send(InputType.MouseButton, buildMouseButton(MouseButton.Left, false, p.x, p.y));
+          break;
+        }
+      }
+    }
+  }
+
+  _moveCursorBy(dx, dy) {
+    const rect = this.o.getVideoRect();
+    if (!rect) return;
+    this.cursor.x = clamp01(this.cursor.x + dx / rect.width * MOUSE_MODE_SPEED);
+    this.cursor.y = clamp01(this.cursor.y + dy / rect.height * MOUSE_MODE_SPEED);
+    this._sendCursorMove();
+  }
+
+  /** Long-press feedback: a ring at the finger (touch mode) or at the virtual cursor (mouse mode). */
+  _flashRing(at) {
+    const parentEl = this.o.cursor.parentElement;
+    if (!parentEl) return;
+    if (!this.ring) {
+      this.ring = document.createElement('div');
+      this.ring.className = 'touch-ring';
+      parentEl.appendChild(this.ring);
+    }
+    const parent = parentEl.getBoundingClientRect();
+    let x, y;
+    if (at) { x = at.x; y = at.y; } else {
+      const rect = this.o.getVideoRect();
+      if (!rect) return;
+      x = rect.left + this.cursor.x * rect.width;
+      y = rect.top + this.cursor.y * rect.height;
+    }
+    const r = this.ring;
+    // Use `translate`, not `transform`: the keyframes animate `scale`, which CSS applies on top of
+    // `transform` and would scale the offset too, sliding the ring diagonally.
+    r.style.translate = `${x - parent.left}px ${y - parent.top}px`;
+    r.classList.remove('is-on');
+    void r.offsetWidth; // restart the animation
+    r.classList.add('is-on');
+  }
+
+  /** Local zoom: mouse mode anchors on the virtual cursor, touch mode on the last touch point and pans with the fingers. */
+  _pinch(touches, mid) {
+    const st = this.touch;
+    const zoom = this.o.zoom;
+    if (!zoom || !st.startDist) return;
+    const target = st.startZoom * distance(touches) / st.startDist;
+    if (this.mode === 'mouse') {
+      const g = zoom.geometry();
+      if (g) {
+        const v = zoom.view;
+        zoom.zoomAt(target, v.tx + (g.base.left + this.cursor.x * g.base.width) * v.zoom,
+          v.ty + (g.base.top + this.cursor.y * g.base.height) * v.zoom);
+      }
+    } else {
+      zoom.zoomAt(target, st.touchAnchor.x, st.touchAnchor.y);
+      zoom.panBy(mid.x - st.pinchMid.x, mid.y - st.pinchMid.y);
+      st.touchAnchor = { x: st.touchAnchor.x + mid.x - st.pinchMid.x, y: st.touchAnchor.y + mid.y - st.pinchMid.y };
+    }
+    st.pinchMid = mid;
+    this._updateCursorOverlay();
+  }
+
+  /** Call when the stream starts/stops: drops the local zoom. */
+  resetZoom() {
+    this.lastTouchPoint = null;
+    this.o.zoom?.reset();
+    this._updateCursorOverlay();
   }
 
   _cancelTouch() {
-    if (!this.touch) return;
-    clearTimeout(this.touch.timer);
-    if (this.touch.dragging) this._endDrag();
+    if (this.touch) clearTimeout(this.touch.timer);
     this.touch = null;
+    this._applyGesture(this.gesture.cancel());
   }
 
   _click(button, p) {
@@ -332,7 +440,7 @@ export class InputController {
   }
 
   _anchorPoint(mid) {
-    return this.mode === 'touchpad' ? this._cursorPoint() : this._point(mid.x, mid.y);
+    return this.mode === 'mouse' ? this._cursorPoint() : this._point(mid.x, mid.y);
   }
 
   _cursorPoint() {
@@ -342,25 +450,33 @@ export class InputController {
   _sendCursorMove() {
     const p = this._cursorPoint();
     this._send(InputType.MouseMove, buildMouseMove(p.x, p.y));
+    this.o.zoom?.ensureVisible(this.cursor.x, this.cursor.y, CURSOR_EDGE_MARGIN_PX);
     this._updateCursorOverlay();
   }
 
-  /** Draws the touchpad cursor locally (the stream may not include the remote cursor). */
+  /** Draws the mouse-mode cursor locally (the stream may not include the remote cursor). */
   _updateCursorOverlay() {
     const el = this.o.cursor;
     const rect = this.o.getVideoRect();
-    if (this.mode !== 'touchpad' || !rect || !this.o.isActive()) { el.hidden = true; return; }
+    if (this.mode !== 'mouse' || !rect || !this.o.isActive()) { el.hidden = true; return; }
     const parent = el.offsetParent?.getBoundingClientRect() || { left: 0, top: 0 };
     el.hidden = false;
     el.style.transform = `translate(${rect.left - parent.left + this.cursor.x * rect.width}px, ${rect.top - parent.top + this.cursor.y * rect.height}px)`;
   }
 
   /** Call after layout changes (resize, new stream) so the local cursor stays on the video. */
-  refreshOverlay() { this._updateCursorOverlay(); }
+  refreshOverlay() {
+    this.o.zoom?.refresh();
+    this._updateCursorOverlay();
+  }
 }
 
 function midpoint(touches) {
   return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 };
+}
+
+function distance(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }

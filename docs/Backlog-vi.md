@@ -42,9 +42,6 @@ Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms
 ## [Thấp] Capture: viền vàng có thể vẫn hiện
 `IsBorderRequired(false)` cần quyền `GraphicsCaptureAccess` Borderless; app desktop không đóng gói có thể bị từ chối, lỗi đang bị nuốt. Cân nhắc gọi `RequestAccessAsync` và log kết quả.
 
-## [Thấp] Video: cửa sổ thu nhỏ lúc chọn nguồn thì viewer chờ không báo gì
-WGC không đưa khung khi cửa sổ thu nhỏ; `VideoStreamer` chờ tới khi có khung đầu mới gửi StreamStarted. Cân nhắc báo viewer (vd `IsIconic`).
-
 ## [Vừa] Web viewer: terminal trên điện thoại thiếu thanh phím Ctrl/Esc/Tab/mũi tên
 Bàn phím ảo của điện thoại không có Ctrl, Esc, Tab, phím mũi tên nên khó dùng shell (vim, htop, lịch sử lệnh). Cân nhắc thêm thanh phím phụ phía trên bàn phím ảo trong panel terminal.
 
