@@ -6,16 +6,19 @@ using FocusRemote.Host.Encoding.Models;
 
 // Smoke test: capture the primary monitor with the encoder DLL's own capture (same D3D11 device),
 // encode ~150 frames at 30 fps (the last frame is repeated when the screen is static) and write a raw Annex B H.264 file.
-// Usage: FocusRemote.EncoderSmoke <out.h264> [frameCount] [encoderName]
+// Usage: FocusRemote.EncoderSmoke <out.h264> [frameCount] [encoderName] [width height]
+// width/height (optional) set an encode size different from the capture (exercises VideoProcessor scaling).
 
 if (args.Length < 1)
 {
-	Console.WriteLine("Usage: FocusRemote.EncoderSmoke <out.h264> [frameCount] [encoderName]");
+	Console.WriteLine("Usage: FocusRemote.EncoderSmoke <out.h264> [frameCount] [encoderName|-] [width height]");
 	return 1;
 }
 string outputPath = args[0];
 int frameCount = args.Length > 1 ? int.Parse(args[1]) : 150;
-string? encoderName = args.Length > 2 ? args[2] : null;
+string? encoderName = args.Length > 2 && args[2] != "-" ? args[2] : null;
+int? forcedWidth = args.Length > 4 ? int.Parse(args[3]) : null;
+int? forcedHeight = args.Length > 4 ? int.Parse(args[4]) : null;
 const int fps = 30;
 
 using HardwareVideoEncoder encoder = new();
@@ -35,8 +38,8 @@ if (!capture.HasFrame)
 }
 Console.WriteLine($"First captured frame after {warmUp.ElapsedMilliseconds} ms");
 
-int width = capture.Size.Width & ~1;
-int height = capture.Size.Height & ~1;
+int width = (forcedWidth ?? capture.Size.Width) & ~1;
+int height = (forcedHeight ?? capture.Size.Height) & ~1;
 Console.WriteLine($"Capture size: {capture.Size.Width}x{capture.Size.Height} -> encode {width}x{height}");
 encoder.Open(new VideoEncoderOptions
 {
