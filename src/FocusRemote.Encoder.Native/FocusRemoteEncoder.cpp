@@ -332,6 +332,8 @@ private:
 			av_dict_set(dict, "zerolatency", "1", 0);
 			// VBR capped by rc_max_rate: CBR pads static screens with filler data up to the full bitrate.
 			av_dict_set(dict, "rc", "vbr", 0);
+			// Constant quality inside the VBR cap (bit_rate is 0 for nvenc, see OpenCodec): static frames shrink to a few KB.
+			av_dict_set(dict, "cq", "28", 0);
 			av_dict_set(dict, "delay", "0", 0);
 			av_dict_set(dict, "forced-idr", "1", 0);
 		}
@@ -380,6 +382,9 @@ private:
 		_codec->bit_rate = static_cast<int64_t>(_options.bitrateKbps) * 1000;
 		_codec->rc_max_rate = _codec->bit_rate;
 		_codec->rc_buffer_size = static_cast<int>(_codec->bit_rate / _options.fps); // ~1 frame VBV
+		// nvenc: no average target so "cq" drives quality; rc_max_rate still caps bursts.
+		if (name.ends_with("_nvenc"))
+			_codec->bit_rate = 0;
 		_codec->gop_size = _options.gopSeconds > 0 ? _options.gopSeconds * _options.fps : _options.fps * 3600;
 		_codec->max_b_frames = 0;
 		_codec->color_range = AVCOL_RANGE_MPEG;

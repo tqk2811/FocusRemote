@@ -9,9 +9,6 @@ Chưa có test client rớt giữa chừng, bên nhận chậm.
 ## [Vừa] Encoder: h264_qsv chưa zero-copy
 Bản FFmpeg này h264_qsv chỉ nhận nv12/qsv → máy Intel đi đường bộ nhớ hệ thống. Cần derive frame D3D11 → QSV. Chưa thử HEVC/qsv/amf.
 
-## [Thấp] Encoder: nvenc tốn bitrate khi khung tĩnh
-VBR không đặt `cq`, khung tĩnh ~3.5 MB/5 s. Tinh chỉnh sau.
-
 ## [Vừa] Host: toạ độ input của cửa sổ theo khung DWM, chưa tính phần thu nhỏ/che
 Input cửa sổ quy đổi theo `DWMWA_EXTENDED_FRAME_BOUNDS` (đúng vùng WinRT capture, gồm cả thanh tiêu đề) chứ không phải client area. Cửa sổ thu nhỏ thì capture dừng nhưng stream vẫn mở; chưa báo viewer.
 
