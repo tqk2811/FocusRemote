@@ -13,7 +13,7 @@ export const MIN_PASSWORD_LENGTH = 10;
 export const ID_PATTERN = /^[A-Za-z0-9_-]{3,64}$/;
 
 export const FrameKind = Object.freeze({ HelloViewer: 0x01, HelloHost: 0x02, AuthFail: 0x03, Sealed: 0x10 });
-export const Channel = Object.freeze({ Control: 0, Video: 1, Input: 2, Audio: 3 });
+export const Channel = Object.freeze({ Control: 0, Video: 1, Input: 2, Audio: 3, Terminal: 4 });
 export const ControlType = Object.freeze({
   AuthProbe: 0x01, AuthOk: 0x02, Capabilities: 0x03,
   ListSources: 0x10, SourceList: 0x11, SelectSource: 0x12, StreamStarted: 0x13,
@@ -23,6 +23,11 @@ export const ControlType = Object.freeze({
 export const VideoType = Object.freeze({ Frame: 0x01 });
 export const InputType = Object.freeze({ MouseMove: 0x01, MouseButton: 0x02, MouseWheel: 0x03, Key: 0x04, Text: 0x05, ReleaseAll: 0x06 });
 export const AudioType = Object.freeze({ Config: 0x01, Packet: 0x02 });
+export const TerminalType = Object.freeze({
+  ListShells: 0x01, ShellList: 0x02, Open: 0x10, Opened: 0x11, Closed: 0x12,
+  Input: 0x20, Output: 0x21, Resize: 0x22, Close: 0x23,
+});
+export const MAX_TERMINALS = 8;
 export const MouseButton = Object.freeze({ Left: 0, Right: 1, Middle: 2, X1: 3, X2: 4 });
 
 const utf8Encoder = new TextEncoder();
@@ -190,3 +195,52 @@ export function buildKey(down, code) {
 }
 
 export function buildText(text) { return utf8(text); }
+
+// ---- Terminal (§5.5) ----
+
+/** Input (V->H) / Output (H->V) payload: [u32 LE terminalId][bytes]. */
+export function buildTerminalData(terminalId, data) {
+  const out = new Uint8Array(4 + data.length);
+  new DataView(out.buffer).setUint32(0, terminalId >>> 0, true);
+  out.set(data, 4);
+  return out;
+}
+
+export function parseTerminalData(payload) {
+  if (payload.length < 4) return null;
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return { terminalId: dv.getUint32(0, true), data: payload.subarray(4) };
+}
+
+/** Resize payload: [u32 LE terminalId][u16 LE cols][u16 LE rows]. */
+export function buildTerminalResize(terminalId, cols, rows) {
+  const out = new Uint8Array(8);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, terminalId >>> 0, true);
+  dv.setUint16(4, clampU16(cols), true);
+  dv.setUint16(6, clampU16(rows), true);
+  return out;
+}
+
+/** Close payload: [u32 LE terminalId]. */
+export function buildTerminalClose(terminalId) {
+  const out = new Uint8Array(4);
+  new DataView(out.buffer).setUint32(0, terminalId >>> 0, true);
+  return out;
+}
+
+/** Returns { enabled, shells: [{ id, name }] } or null when malformed. */
+export function parseShellList(payload) {
+  const v = decodeJson(payload);
+  if (!v || typeof v.enabled !== 'boolean') return null;
+  const shells = Array.isArray(v.shells)
+    ? v.shells.filter((s) => s && typeof s.id === 'string').map((s) => ({ id: s.id, name: typeof s.name === 'string' && s.name ? s.name : s.id }))
+    : [];
+  return { enabled: v.enabled, shells };
+}
+
+/** Opened / Closed payloads are JSON with a numeric terminalId; returns the object or null. */
+export function parseTerminalEvent(payload) {
+  const v = decodeJson(payload);
+  return v && Number.isInteger(v.terminalId) ? v : null;
+}

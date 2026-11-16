@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark light">
   <title>FocusRemote</title>
+  <link rel="stylesheet" href="lib/xterm/xterm.css">
   <link rel="stylesheet" href="css/app.css">
+  <!-- xterm.js 5.5.0 + addon-fit 0.10.0, vendored (UMD globals: Terminal, FitAddon) so LAN mode works offline -->
+  <script src="lib/xterm/xterm.js"></script>
+  <script src="lib/xterm/addon-fit.js"></script>
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -41,6 +45,7 @@
         <option value="direct">Chạm trực tiếp</option>
         <option value="touchpad">Touchpad</option>
       </select>
+      <button id="terminalButton" type="button" title="Terminal từ xa" aria-pressed="false">&gt;_ Terminal</button>
       <button id="keyboardButton" type="button" title="Bàn phím ảo" hidden>⌨</button>
       <button id="muteButton" type="button" title="Bật/tắt tiếng">🔇</button>
       <button id="fullscreenButton" type="button" title="Toàn màn hình">⛶</button>
@@ -70,6 +75,17 @@
         <canvas id="videoCanvas"></canvas>
         <div id="cursor" class="cursor" hidden></div>
         <p id="stageMessage" class="stage-message">Chọn một cửa sổ hoặc màn hình để xem.</p>
+      </section>
+
+      <section id="terminalView" class="terminal-view" hidden>
+        <div class="terminal-tabs">
+          <div id="terminalTabs" class="terminal-tab-list" role="tablist"></div>
+          <button id="terminalNewButton" type="button" title="Mở terminal mới">＋</button>
+          <div id="terminalShellMenu" class="terminal-shell-menu" hidden></div>
+        </div>
+        <div id="terminalHost" class="terminal-host">
+          <p id="terminalMessage" class="terminal-message"></p>
+        </div>
       </section>
     </div>
 
