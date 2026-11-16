@@ -20,9 +20,17 @@ internal sealed class PeerConnection
     private readonly Task _writerTask;
     private readonly CancellationTokenSource _abort = new();
 
-    public PeerConnection(WebSocket socket, int queueCapacity)
+    // Byte budget for queued binary messages (the channel itself only bounds the message count).
+    private readonly object _bytesLock = new();
+    private readonly long _maxQueuedBytes;
+    private long _queuedBytes;
+    private bool _closed;
+    private TaskCompletionSource _spaceFreed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public PeerConnection(WebSocket socket, int queueCapacity, long maxQueuedBytes)
     {
         _socket = socket;
+        _maxQueuedBytes = maxQueuedBytes;
         _queue = Channel.CreateBounded<OutMessage>(new BoundedChannelOptions(queueCapacity)
         {
             SingleReader = true,
@@ -33,16 +41,62 @@ internal sealed class PeerConnection
 
     public WebSocket Socket => _socket;
 
-    /// <summary>Queues a binary message; awaits while the queue is full. Silently ignored once closed.</summary>
+    /// <summary>
+    /// Queues a binary message; awaits while the queue is full (by message count or total bytes).
+    /// Silently ignored once closed.
+    /// </summary>
     public async ValueTask SendBinaryAsync(byte[] data, int length, CancellationToken cancellationToken)
     {
+        if (!await ReserveBytesAsync(length, cancellationToken))
+            return;
         try
         {
             await _queue.Writer.WriteAsync(new OutMessage(OutKind.Binary, data, length, default), cancellationToken);
         }
         catch (ChannelClosedException)
         {
+            ReleaseBytes(length);
         }
+        catch
+        {
+            ReleaseBytes(length);
+            throw;
+        }
+    }
+
+    /// <summary>Waits until <paramref name="length"/> bytes fit the budget (an empty queue takes any size). False once closed.</summary>
+    private async ValueTask<bool> ReserveBytesAsync(int length, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task wait;
+            lock (_bytesLock)
+            {
+                if (_closed)
+                    return false;
+                if (_queuedBytes == 0 || _queuedBytes + length <= _maxQueuedBytes)
+                {
+                    _queuedBytes += length;
+                    return true;
+                }
+                wait = _spaceFreed.Task;
+            }
+            await wait.WaitAsync(cancellationToken);
+        }
+    }
+
+    private void ReleaseBytes(int length, bool close = false)
+    {
+        TaskCompletionSource freed;
+        lock (_bytesLock)
+        {
+            _queuedBytes -= length;
+            if (close)
+                _closed = true;
+            freed = _spaceFreed;
+            _spaceFreed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        freed.TrySetResult();
     }
 
     /// <summary>Queues a relay status text message <c>{"type":"..."}</c> (ordered with binary data).</summary>
@@ -94,8 +148,15 @@ internal sealed class PeerConnection
                 switch (message.Kind)
                 {
                     case OutKind.Binary:
-                        await _socket.SendAsync(new ArraySegment<byte>(message.Data, 0, message.Length),
-                            WebSocketMessageType.Binary, true, _abort.Token);
+                        try
+                        {
+                            await _socket.SendAsync(new ArraySegment<byte>(message.Data, 0, message.Length),
+                                WebSocketMessageType.Binary, true, _abort.Token);
+                        }
+                        finally
+                        {
+                            ReleaseBytes(message.Length);
+                        }
                         break;
                     case OutKind.Text:
                         await _socket.SendAsync(message.Data, WebSocketMessageType.Text, true, _abort.Token);
@@ -114,7 +175,13 @@ internal sealed class PeerConnection
         finally
         {
             _queue.Writer.TryComplete();
-            while (_queue.Reader.TryRead(out _)) { }
+            while (_queue.Reader.TryRead(out OutMessage dropped))
+            {
+                if (dropped.Kind == OutKind.Binary)
+                    ReleaseBytes(dropped.Length);
+            }
+            // Wake producers waiting for byte budget; they return without queuing.
+            ReleaseBytes(0, close: true);
         }
     }
 }

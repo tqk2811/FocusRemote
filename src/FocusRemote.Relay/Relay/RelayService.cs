@@ -45,7 +45,7 @@ internal sealed partial class RelayService
             return;
         }
 
-        var host = new PeerConnection(socket, _options.QueueCapacity);
+        var host = new PeerConnection(socket, _options.QueueCapacity, _options.QueueMaxBytes);
         var session = new HostSession(id, host);
         if (!_hosts.TryAdd(id, session))
         {
@@ -99,7 +99,7 @@ internal sealed partial class RelayService
             return;
         }
 
-        var viewer = new PeerConnection(socket, _options.QueueCapacity);
+        var viewer = new PeerConnection(socket, _options.QueueCapacity, _options.QueueMaxBytes);
         if (!session.TryAttachViewer(viewer))
         {
             _logger.LogInformation("Viewer rejected: host {Id} busy, from {Ip}", id, ip);

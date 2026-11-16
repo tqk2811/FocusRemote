@@ -25,4 +25,10 @@ public sealed class RelayOptions
 
     /// <summary>Capacity (in messages) of each per-direction forwarding queue.</summary>
     public int QueueCapacity { get; set; } = 64;
+
+    /// <summary>
+    /// Maximum total bytes of binary messages waiting in each per-direction queue (default 32 MiB).
+    /// A message larger than this is still accepted when the queue is empty.
+    /// </summary>
+    public long QueueMaxBytes { get; set; } = 32L * 1024 * 1024;
 }
