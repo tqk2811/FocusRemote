@@ -12,9 +12,6 @@ Chưa có test client rớt giữa chừng, bên nhận chậm.
 ## [Vừa] Encoder: h264_qsv chưa zero-copy
 Bản FFmpeg này h264_qsv chỉ nhận nv12/qsv → máy Intel đi đường bộ nhớ hệ thống. Cần derive frame D3D11 → QSV. Chưa thử HEVC/qsv/amf.
 
-## [Thấp] Encoder: nvenc tốn bitrate khi khung tĩnh
-VBR không đặt `cq`, khung tĩnh ~3.5 MB/5 s. Tinh chỉnh sau.
-
 ## [Vừa] Host: viewer relay bị bỏ lơ khi đang có viewer LAN
 Đang có viewer (qua LAN hoặc relay) thì viewer mới qua relay ngoài không nhận được gì (relay đã ghép cặp nên Host không đóng được socket của nó), viewer chỉ thấy treo tới khi tự hết giờ. Cân nhắc thêm thông báo "bận" trong Protocol (vd AuthFail kèm lý do) hoặc để relay biết Host đang bận.
 
