@@ -262,7 +262,8 @@ function onControl(type, payload) {
       setStageMessage('Đang chờ khung hình đầu tiên…');
       el.stopStream.disabled = false;
       renderSources();
-      if (isNarrow()) setSourcesOpen(false);
+      // Phones in landscape are wider than the narrow breakpoint but still need the room.
+      if (isNarrow() || isTouchDevice) setSourcesOpen(false);
       return;
     }
     case ControlType.StreamStopped: {
@@ -488,6 +489,10 @@ function init() {
 
   el.loginForm.addEventListener('submit', onLoginSubmit);
   el.sourcesButton.addEventListener('click', () => setSourcesOpen(el.sourcesPanel.classList.contains('collapsed')));
+  // On touch devices a tap on the picture closes the source panel (capture phase: before input.js handles the touch).
+  el.stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch' && state.activeSourceId && !el.sourcesPanel.classList.contains('collapsed')) setSourcesOpen(false);
+  }, true);
   el.refreshSources.addEventListener('click', () => state.conn?.sendControlJson(ControlType.ListSources, {}));
   el.stopStream.addEventListener('click', () => {
     state.conn?.sendControlJson(ControlType.StopStream, {});
