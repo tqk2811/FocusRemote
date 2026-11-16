@@ -11,6 +11,7 @@ import { VideoPlayer, detectVideoCodecs } from './video.js';
 import { AudioPlayer, detectAudioCodecs } from './audio.js';
 import { InputController } from './input.js';
 import { TerminalPanel } from './terminal.js';
+import { ViewZoom } from './viewzoom.js';
 
 const STORAGE_KEY = 'focusremote.login';
 const PING_INTERVAL_MS = 2000;
@@ -74,7 +75,9 @@ const video = new VideoPlayer(el.canvas, {
   onFirstFrame: () => { el.stageMessage.hidden = true; input.refreshOverlay(); },
 });
 const audio = new AudioPlayer();
+const viewZoom = new ViewZoom(el.stage, el.canvas);
 const input = new InputController({
+  zoom: viewZoom,
   surface: el.stage,
   cursor: el.cursor,
   softInput: el.softInput,
@@ -229,7 +232,7 @@ function resetStream() {
   video.stop();
   video.clear();
   audio.stop();
-  input.refreshOverlay();
+  input.resetZoom();
   el.stopStream.disabled = true;
   renderSources();
 }
@@ -251,6 +254,7 @@ function onControl(type, payload) {
       state.streaming = true;
       state.activeSourceId = msg.sourceId ?? state.activeSourceId;
       video.start(msg.codec);
+      input.resetZoom();
       setStageMessage('Đang chờ khung hình đầu tiên…');
       el.stopStream.disabled = false;
       renderSources();
@@ -353,6 +357,35 @@ function renderSources() {
 
 // ---------- view helpers ----------
 
+/**
+ * Sizes the session view to the visual viewport so an on-screen keyboard (remote soft input or
+ * the terminal's xterm textarea) pushes the bottom of the UI up instead of covering it.
+ * Chrome Android with interactive-widget=resizes-content already shrinks the layout viewport,
+ * so this is a no-op there; it covers older Chrome, Firefox and iOS Safari.
+ */
+function trackVisualViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement;
+  let raf = 0;
+  const sync = () => {
+    raf = 0;
+    // Only while something covers the bottom (keyboard); otherwise keep the plain inset: 0 layout.
+    const covered = vv.height < window.innerHeight - 1 || vv.offsetTop > 0;
+    if (covered) {
+      root.style.setProperty('--vv-top', `${vv.offsetTop}px`);
+      root.style.setProperty('--vv-height', `${vv.height}px`);
+    } else {
+      root.style.removeProperty('--vv-top');
+      root.style.removeProperty('--vv-height');
+    }
+    input.refreshOverlay();
+  };
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(sync); };
+  vv.addEventListener('resize', schedule);
+  vv.addEventListener('scroll', schedule);
+}
+
 function showLogin() {
   terminal.setVisible(false);
   el.sessionView.hidden = true;
@@ -437,6 +470,7 @@ function init() {
     el.keyboard.hidden = false;
   }
   window.addEventListener('resize', () => input.refreshOverlay());
+  trackVisualViewport();
   document.addEventListener('fullscreenchange', () => input.refreshOverlay());
   window.addEventListener('pagehide', () => { input.releaseAll(); stopConnection(); });
   // Keep a reference for debugging from the console.

@@ -10,6 +10,8 @@ const LONG_PRESS_MS = 550;
 const TAP_SLOP_PX = 10;
 const TOUCH_SCROLL_FACTOR = 4;      // wheel units per CSS pixel of two-finger movement
 const TOUCHPAD_SPEED = 1.6;         // cursor speed multiplier in touchpad mode
+const PINCH_THRESHOLD_PX = 24;      // finger distance change that turns a two-finger gesture into a pinch
+const CURSOR_EDGE_MARGIN_PX = 40;   // zoomed touchpad view pans to keep the cursor this far from the edge
 const SOFT_SENTINEL = ' ';     // kept in the hidden input so Backspace always fires an input event
 
 // DOM MouseEvent.button -> protocol button
@@ -31,11 +33,21 @@ export function wheelToUnits(delta, deltaMode) {
   return -delta * perUnit;
 }
 
+/**
+ * Classifies a two-finger gesture: 'pinch' when the finger distance changed by more than the
+ * threshold, 'scroll' when the midpoint moved (parallel movement), otherwise null (undecided).
+ */
+export function classifyTwoFinger(startDist, dist, startMid, mid, pinchThreshold = PINCH_THRESHOLD_PX, slop = TAP_SLOP_PX) {
+  if (Math.abs(dist - startDist) > pinchThreshold) return 'pinch';
+  if (Math.hypot(mid.x - startMid.x, mid.y - startMid.y) > slop) return 'scroll';
+  return null;
+}
+
 export class InputController {
   /**
    * @param {{ surface: HTMLElement, cursor: HTMLElement, softInput: HTMLTextAreaElement,
    *           getVideoRect: () => DOMRect|null, send: (type: number, payload: Uint8Array) => void,
-   *           isActive: () => boolean }} options
+   *           isActive: () => boolean, zoom?: import('./viewzoom.js').ViewZoom }} options
    */
   constructor(options) {
     this.o = options;
@@ -47,6 +59,7 @@ export class InputController {
     this.wheelAcc = { x: 0, y: 0 };
     this.cursor = { x: 0.5, y: 0.5 }; // touchpad cursor, normalized 0..1
     this.touch = null;
+    this.lastTouchPoint = null; // client point of the last direct-mode tap/drag end: pinch anchor
     this._bind();
   }
 
@@ -226,7 +239,21 @@ export class InputController {
       this.touch.fingers = touches.length;
       this.touch.maxFingers = Math.max(this.touch.maxFingers, touches.length);
       this.touch.scrollMid = midpoint(touches);
+      this._startTwoFinger(touches);
     }
+  }
+
+  _startTwoFinger(touches) {
+    const st = this.touch;
+    const zoom = this.o.zoom;
+    st.gesture = st.gesture === 'pinch' ? 'pinch' : null; // a pinch stays a pinch when fingers change
+    st.startDist = distance(touches);
+    st.startMid = midpoint(touches);
+    st.pinchMid = st.startMid;
+    st.startZoom = zoom ? zoom.view.zoom : 1;
+    // Direct mode zooms around where the remote cursor was left; fall back to the pinch centre.
+    const a = this.lastTouchPoint || st.startMid;
+    st.directAnchor = zoom ? zoom.toStage(a.x, a.y) : null;
   }
 
   _onTouchMove(e) {
@@ -236,12 +263,20 @@ export class InputController {
     const touches = e.touches;
     if (touches.length >= 2) {
       const mid = midpoint(touches);
-      if (st.scrollMid) {
+      if (st.startDist === undefined) this._startTwoFinger(touches);
+      if (!st.gesture) st.gesture = classifyTwoFinger(st.startDist, distance(touches), st.startMid, mid);
+      if (st.gesture === 'pinch') {
+        this._pinch(touches, mid);
+        st.scrollMid = mid;
+        st.moved = true;
+        return;
+      }
+      if (st.gesture === 'scroll' && st.scrollMid) {
         const anchor = this._anchorPoint(mid);
         if (anchor) this._sendWheel(-(mid.x - st.scrollMid.x) * TOUCH_SCROLL_FACTOR, (mid.y - st.scrollMid.y) * TOUCH_SCROLL_FACTOR, anchor);
       }
       st.scrollMid = mid;
-      st.moved = true;
+      if (st.gesture) st.moved = true; // undecided jitter still counts as a two-finger tap
       return;
     }
     if (st.maxFingers > 1) return; // lifted one finger of a two-finger gesture
@@ -280,10 +315,16 @@ export class InputController {
     const st = this.touch;
     if (!st) return;
     e.preventDefault();
-    if (e.touches.length > 0) { st.fingers = e.touches.length; st.scrollMid = e.touches.length >= 2 ? midpoint(e.touches) : null; return; }
+    if (e.touches.length > 0) {
+      st.fingers = e.touches.length;
+      st.scrollMid = e.touches.length >= 2 ? midpoint(e.touches) : null;
+      if (e.touches.length >= 2) this._startTwoFinger(e.touches);
+      return;
+    }
     clearTimeout(st.timer);
     this.touch = null;
     if (!this.o.isActive()) return;
+    if (st.maxFingers === 1 && this.mode === 'direct') this.lastTouchPoint = { x: st.lastX, y: st.lastY };
     if (st.dragging) { this._endDrag(); return; }
     if (st.longPressed || st.moved) return;
     const twoFingerTap = st.maxFingers === 2;
@@ -310,6 +351,35 @@ export class InputController {
       st.dragging = true;
       st.moved = true;
     }
+  }
+
+  /** Local zoom: touchpad anchors on the virtual cursor, direct mode on the last touch point and pans with the fingers. */
+  _pinch(touches, mid) {
+    const st = this.touch;
+    const zoom = this.o.zoom;
+    if (!zoom || !st.startDist) return;
+    const target = st.startZoom * distance(touches) / st.startDist;
+    if (this.mode === 'touchpad') {
+      const g = zoom.geometry();
+      if (g) {
+        const v = zoom.view;
+        zoom.zoomAt(target, v.tx + (g.base.left + this.cursor.x * g.base.width) * v.zoom,
+          v.ty + (g.base.top + this.cursor.y * g.base.height) * v.zoom);
+      }
+    } else {
+      zoom.zoomAt(target, st.directAnchor.x, st.directAnchor.y);
+      zoom.panBy(mid.x - st.pinchMid.x, mid.y - st.pinchMid.y);
+      st.directAnchor = { x: st.directAnchor.x + mid.x - st.pinchMid.x, y: st.directAnchor.y + mid.y - st.pinchMid.y };
+    }
+    st.pinchMid = mid;
+    this._updateCursorOverlay();
+  }
+
+  /** Call when the stream starts/stops: drops the local zoom. */
+  resetZoom() {
+    this.lastTouchPoint = null;
+    this.o.zoom?.reset();
+    this._updateCursorOverlay();
   }
 
   _endDrag() {
@@ -342,6 +412,7 @@ export class InputController {
   _sendCursorMove() {
     const p = this._cursorPoint();
     this._send(InputType.MouseMove, buildMouseMove(p.x, p.y));
+    this.o.zoom?.ensureVisible(this.cursor.x, this.cursor.y, CURSOR_EDGE_MARGIN_PX);
     this._updateCursorOverlay();
   }
 
@@ -356,11 +427,18 @@ export class InputController {
   }
 
   /** Call after layout changes (resize, new stream) so the local cursor stays on the video. */
-  refreshOverlay() { this._updateCursorOverlay(); }
+  refreshOverlay() {
+    this.o.zoom?.refresh();
+    this._updateCursorOverlay();
+  }
 }
 
 function midpoint(touches) {
   return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 };
+}
+
+function distance(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
