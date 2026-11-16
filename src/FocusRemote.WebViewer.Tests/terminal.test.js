@@ -80,3 +80,15 @@ test('closedText sanitizes host message and prefers exit code', async () => {
   assert.equal(closedText({ message: 'bad\x1b]0;t\x07' }), '[Terminal đã đóng: bad]0;t]');
   assert.equal(closedText({}), '[Tiến trình đã kết thúc]');
 });
+
+test('applyCtrl maps the first character like a Ctrl chord', async () => {
+  const { applyCtrl } = await import('../FocusRemote.Relay/wwwroot/js/terminal.js');
+  assert.equal(applyCtrl('c'), '\x03');
+  assert.equal(applyCtrl('C'), '\x03');
+  assert.equal(applyCtrl('['), '\x1b');
+  assert.equal(applyCtrl(' '), '\x00');
+  assert.equal(applyCtrl('?'), '\x7f');
+  assert.equal(applyCtrl('dx'), '\x04x');
+  assert.equal(applyCtrl('1'), '1');
+  assert.equal(applyCtrl(''), '');
+});

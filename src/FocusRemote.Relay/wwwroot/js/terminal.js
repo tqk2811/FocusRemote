@@ -10,12 +10,16 @@ const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 const MAX_PENDING_BYTES = 64 * 1024;
 const PENDING_LABEL = 'Đang mở…';
+// Extra-key bar for touch keyboards that lack Esc/Tab/Ctrl/arrows. Arrows follow DECCKM (application cursor mode).
+const ESC = String.fromCharCode(0x1b);
+const KEY_SEQUENCES = { esc: ESC, tab: String.fromCharCode(0x09) };
+const ARROW_CODES = { up: 'A', down: 'B', right: 'C', left: 'D' };
 const THEME = { background: '#0b0d10', foreground: '#e5e7eb', cursor: '#e5e7eb', selectionBackground: '#3b82f680' };
 
 export class TerminalPanel {
   /**
    * @param {{ view: HTMLElement, tabs: HTMLElement, newButton: HTMLButtonElement, shellMenu: HTMLElement,
-   *           message: HTMLElement, host: HTMLElement, toggleButton: HTMLButtonElement,
+   *           message: HTMLElement, host: HTMLElement, toggleButton: HTMLButtonElement, keyBar?: HTMLElement,
    *           send: (type: number, payload: Uint8Array) => void, isConnected: () => boolean,
    *           onBeforeShow?: () => void, onVisibilityChange?: (visible: boolean) => void }} options
    */
@@ -27,9 +31,11 @@ export class TerminalPanel {
     this.activeId = null;
     this.nextId = 1;
     this.resizeTimer = 0;
+    this.ctrlLatched = false;    // key bar Ctrl: applies to the next typed character
 
     this.o.toggleButton.addEventListener('click', () => this.toggle());
     this.o.newButton.addEventListener('click', () => this._onNewClicked());
+    if (this.o.keyBar) this._bindKeyBar(this.o.keyBar);
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this._scheduleFit()).observe(this.o.host);
     this._renderMessage();
   }
@@ -160,7 +166,10 @@ export class TerminalPanel {
     term.resize(size.cols, size.rows); // before onResize is registered: Open already carries this size
 
     term.attachCustomKeyEventHandler((ev) => !this._tryCopy(term, ev));
-    term.onData((text) => this._sendInput(tab, utf8(text)));
+    term.onData((text) => {
+      if (this.ctrlLatched) { text = applyCtrl(text); this._setCtrlLatched(false); }
+      this._sendInput(tab, utf8(text));
+    });
     term.onBinary((text) => {
       const bytes = new Uint8Array(text.length);
       for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
@@ -220,6 +229,45 @@ export class TerminalPanel {
     if (tab.pendingBytes + bytes.length > MAX_PENDING_BYTES) return; // drop: host never answered
     tab.pending.push(bytes);
     tab.pendingBytes += bytes.length;
+  }
+
+  // ---------- extra-key bar ----------
+
+  _bindKeyBar(bar) {
+    // pointerdown + preventDefault keeps focus (and the soft keyboard) on the terminal.
+    bar.addEventListener('pointerdown', (ev) => { if (ev.target.closest('button')) ev.preventDefault(); });
+    bar.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button');
+      if (btn) this._onKeyBarButton(btn);
+    });
+  }
+
+  _onKeyBarButton(btn) {
+    const tab = this.tabs.get(this.activeId);
+    const key = btn.dataset.key;
+    if (key === 'ctrl') { this._setCtrlLatched(!this.ctrlLatched); tab?.term.focus(); return; }
+    if (!tab || tab.closed) return;
+    let text;
+    if (btn.dataset.text !== undefined) {
+      text = btn.dataset.text;
+      if (this.ctrlLatched) text = applyCtrl(text);
+    } else if (ARROW_CODES[key]) {
+      text = (tab.term.modes?.applicationCursorKeysMode ? ESC + 'O' : ESC + '[') + ARROW_CODES[key];
+    } else {
+      text = KEY_SEQUENCES[key];
+    }
+    if (!text) return;
+    this._setCtrlLatched(false);
+    this._sendInput(tab, utf8(text));
+    tab.term.focus();
+  }
+
+  _setCtrlLatched(on) {
+    this.ctrlLatched = on;
+    const btn = this.o.keyBar?.querySelector('[data-key="ctrl"]');
+    if (!btn) return;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', String(on));
   }
 
   /** Ctrl+C / Ctrl+Shift+C copies the selection instead of sending ^C; returns true when handled. */
@@ -334,6 +382,17 @@ export class TerminalPanel {
 /** Strips ESC and other C0/C1 control characters (and DEL) from host-provided text before it reaches the terminal. */
 export function sanitizeHostText(text) {
   return String(text ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+}
+
+/** Ctrl+<char> for the first character of text: letters and @[\]^_ map to C0, space to NUL, ? to DEL. */
+export function applyCtrl(text) {
+  if (!text) return text;
+  const c = text.charCodeAt(0);
+  let mapped = null;
+  if ((c >= 0x40 && c <= 0x5f) || (c >= 0x61 && c <= 0x7a)) mapped = String.fromCharCode(c & 0x1f);
+  else if (c === 0x20) mapped = String.fromCharCode(0);
+  else if (c === 0x3f) mapped = String.fromCharCode(0x7f);
+  return mapped === null ? text : mapped + text.slice(1);
 }
 
 export function closedText(msg) {
