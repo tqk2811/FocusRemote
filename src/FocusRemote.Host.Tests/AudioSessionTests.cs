@@ -58,6 +58,18 @@ public sealed class AudioSessionTests
         Assert.Equal(0, harness.AudioStreamersCreated);
     }
 
+    [Fact]
+    public async Task SecondViewer_WhileBusy_GetsBusyFrame()
+    {
+        await using var harness = await Harness.StartAsync();
+        var second = new MemoryLink();
+        Task run = harness.Manager.RunAsync(second, CancellationToken.None);
+        using var cts = new CancellationTokenSource(_timeout);
+        byte[] frame = await second.ToViewer.Reader.ReadAsync(cts.Token);
+        Assert.True(HandshakeFrames.IsBusy(frame));
+        await run.WaitAsync(_timeout);
+    }
+
     private static SelectSourceMessage Select(bool audio) => new()
     {
         Id = _source.Id, MaxWidth = 640, MaxHeight = 480, MaxFps = 30, BitrateKbps = 1000, Audio = audio,
@@ -70,6 +82,8 @@ public sealed class AudioSessionTests
         private Task _run = Task.CompletedTask;
         private SecureSession? _session;
         private int _audioStreamersCreated;
+
+        public HostSessionManager Manager { get; private set; } = null!;
 
         public int AudioStreamersCreated => Volatile.Read(ref _audioStreamersCreated);
 
@@ -88,6 +102,7 @@ public sealed class AudioSessionTests
                     Interlocked.Increment(ref harness._audioStreamersCreated);
                     return new FakeAudioStreamer(sink);
                 });
+            harness.Manager = manager;
             harness._run = manager.RunAsync(harness._link, harness._cts.Token);
 
             var handshake = new ViewerHandshake(rootKey);

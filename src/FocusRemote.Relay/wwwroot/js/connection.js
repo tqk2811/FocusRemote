@@ -121,6 +121,10 @@ export class ViewerConnection {
         if (this.state === 'probing' || this.state === 'paired')
           this._finish({ reason: 'Sai password.', authFailed: true });
         return;
+      case FrameKind.Busy:
+        if (this.state !== 'authenticated')
+          this._finish({ reason: 'Host đang bận với một viewer khác.' });
+        return;
       case FrameKind.Sealed: {
         if (!this.session) return; // before handshake: ignore
         const msg = await this.session.open(frame);
