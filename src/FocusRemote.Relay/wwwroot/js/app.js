@@ -35,7 +35,7 @@ const el = {
   reconnect: $('reconnectButton'), back: $('backButton'),
   terminalButton: $('terminalButton'), terminalView: $('terminalView'), terminalTabs: $('terminalTabs'),
   terminalNew: $('terminalNewButton'), terminalShellMenu: $('terminalShellMenu'),
-  terminalMessage: $('terminalMessage'), terminalHost: $('terminalHost'),
+  terminalMessage: $('terminalMessage'), terminalHost: $('terminalHost'), terminalKeyBar: $('terminalKeyBar'),
 };
 
 const isTouchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -92,6 +92,7 @@ const input = new InputController({
 const terminal = new TerminalPanel({
   view: el.terminalView, tabs: el.terminalTabs, newButton: el.terminalNew, shellMenu: el.terminalShellMenu,
   message: el.terminalMessage, host: el.terminalHost, toggleButton: el.terminalButton,
+  keyBar: el.terminalKeyBar,
   send: (type, payload) => state.conn?.send(Channel.Terminal, type, payload),
   isConnected: () => !!state.conn?.isAuthenticated,
   onBeforeShow: () => input.releaseAll(), // still active here: releases keys/buttons held on the remote side

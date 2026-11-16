@@ -450,6 +450,37 @@ button.primary {
 .terminal-pane { position: absolute; inset: 4px 6px; }
 .terminal-pane[hidden] { display: none; }
 
+/* Extra keys for touch keyboards; hidden when a real keyboard/mouse is the primary input. */
+.terminal-keybar {
+  flex: none;
+  display: none;
+  gap: 4px;
+  padding: 4px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: #111318;
+  border-top: 1px solid #374151;
+}
+
+.terminal-keybar button {
+  flex: none;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 4px 8px;
+  background: transparent;
+  color: inherit;
+  border-color: #4b5563;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.terminal-keybar button.active { background: var(--accent); border-color: var(--accent); }
+
+@media (pointer: coarse) {
+  .terminal-keybar { display: flex; }
+}
+
 /* ---------- phones ---------- */
 
 @media (max-width: 720px) {
