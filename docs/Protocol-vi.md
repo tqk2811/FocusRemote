@@ -81,6 +81,7 @@ Gói Sealed tới trước khi bắt tay xong thì bỏ qua.
 | `0x15` | StreamStopped | H→V | `{"sourceId":"w:1234","reason":"closed"}` (cửa sổ đóng, lỗi capture…) |
 | `0x16` | RequestKeyframe | V→H | `{}` |
 | `0x17` | SetInputMode | V→H | `{"mode":"message"}`; `mode` = `sendinput` (mặc định) hoặc `message`. Chọn cách Host đưa input (§5.3) vào **nguồn cửa sổ**, giữ trong cả phiên viewer (đổi nguồn không mất). Giá trị lạ coi như `sendinput`; viewer cũ không gửi thì là `sendinput`. Viewer gửi ngay sau `AuthOk` và mỗi lần người dùng đổi |
+| `0x18` | SetAudio | V→H | `{"enabled":true}`. Bật/tắt âm thanh của luồng đang chạy mà không khởi động lại video (viewer bật/tắt loa). Bỏ qua khi chưa có luồng hoặc viewer không có `opus`. Viewer đang tắt loa thì gửi SelectSource với `"audio":false` |
 | `0x20` | Ping | hai chiều | `u64` mốc thời gian ms của bên gửi (không phải JSON) |
 | `0x21` | Pong | hai chiều | trả nguyên 8 byte của Ping |
 | `0x30` | Error | H→V | `{"code":"capture_failed","message":"..."}` |

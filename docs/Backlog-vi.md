@@ -12,9 +12,6 @@ hevc_qsv mở được nhưng `avcodec_send_frame` trả "Invalid data found" �
 ## [Vừa] Host: toạ độ input của cửa sổ theo khung DWM, chưa tính phần thu nhỏ/che
 Input cửa sổ quy đổi theo `DWMWA_EXTENDED_FRAME_BOUNDS` (đúng vùng WinRT capture, gồm cả thanh tiêu đề) chứ không phải client area. Cửa sổ thu nhỏ thì capture dừng nhưng stream vẫn mở; chưa báo viewer.
 
-## [Vừa] Viewer: tắt tiếng vẫn nhận gói âm thanh
-WebViewer mặc định tắt tiếng và bỏ gói Opus khi đang tắt, nhưng Host vẫn capture + gửi (~96 kbps). Cân nhắc message Control bật/tắt âm thanh, hoặc viewer chỉ gửi `audio:true` khi đã bật loa.
-
 ## [Thấp] Audio: chưa đồng bộ hình/tiếng, gói im lặng đều đặn
 Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms), không khớp `timestampUs` với video. Khi máy im lặng Host vẫn gửi ~50 gói/s (vài byte mỗi gói) để giữ nhịp; có thể bật DTX của Opus.
 

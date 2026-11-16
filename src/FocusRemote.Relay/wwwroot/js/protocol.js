@@ -17,7 +17,7 @@ export const Channel = Object.freeze({ Control: 0, Video: 1, Input: 2, Audio: 3,
 export const ControlType = Object.freeze({
   AuthProbe: 0x01, AuthOk: 0x02, Capabilities: 0x03,
   ListSources: 0x10, SourceList: 0x11, SelectSource: 0x12, StreamStarted: 0x13,
-  StopStream: 0x14, StreamStopped: 0x15, RequestKeyframe: 0x16, SetInputMode: 0x17,
+  StopStream: 0x14, StreamStopped: 0x15, RequestKeyframe: 0x16, SetInputMode: 0x17, SetAudio: 0x18,
   Ping: 0x20, Pong: 0x21, Error: 0x30,
 });
 export const VideoType = Object.freeze({ Frame: 0x01 });

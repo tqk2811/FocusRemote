@@ -59,6 +59,43 @@ public sealed class AudioSessionTests
     }
 
     [Fact]
+    public async Task SetAudio_TogglesAudioOfRunningStream()
+    {
+        await using var harness = await Harness.StartAsync();
+        await harness.SendControlAsync(ControlType.Capabilities, new CapabilitiesMessage { VideoCodecs = ["h264"], AudioCodecs = ["opus"] });
+        await harness.SendControlAsync(ControlType.SelectSource, Select(audio: false)); // viewer starts muted
+        await harness.ReceiveUntilAsync(Channel.Video, (byte)VideoType.Frame);
+        Assert.Equal(0, harness.AudioStreamersCreated);
+
+        await harness.SendControlAsync(ControlType.SetAudio, new SetAudioMessage { Enabled = true });
+        await harness.ReceiveUntilAsync(Channel.Audio, (byte)AudioType.Config);
+        Assert.Equal(1, harness.AudioStreamersCreated);
+        Assert.Equal(0, harness.AudioStreamersDisposed);
+
+        await harness.SendControlAsync(ControlType.SetAudio, new SetAudioMessage { Enabled = true }); // already on: no-op
+        await harness.SendControlAsync(ControlType.SetAudio, new SetAudioMessage { Enabled = false });
+        await harness.SendControlAsync(ControlType.SetAudio, new SetAudioMessage { Enabled = true });
+        await harness.ReceiveUntilAsync(Channel.Audio, (byte)AudioType.Config);
+        await harness.SendControlAsync(ControlType.ListSources, new { });
+        await harness.ReceiveUntilAsync(Channel.Control, (byte)ControlType.SourceList);
+        Assert.Equal(2, harness.AudioStreamersCreated);
+        Assert.Equal(1, harness.AudioStreamersDisposed);
+    }
+
+    [Fact]
+    public async Task SetAudio_IgnoredWithoutStreamOrOpus()
+    {
+        await using var harness = await Harness.StartAsync();
+        await harness.SendControlAsync(ControlType.Capabilities, new CapabilitiesMessage { VideoCodecs = ["h264"], AudioCodecs = [] });
+        await harness.SendControlAsync(ControlType.SetAudio, new SetAudioMessage { Enabled = true }); // no stream yet
+        await harness.SendControlAsync(ControlType.SelectSource, Select(audio: false));
+        await harness.SendControlAsync(ControlType.SetAudio, new SetAudioMessage { Enabled = true }); // no opus
+        await harness.SendControlAsync(ControlType.ListSources, new { }); // reply proves the SetAudio before it was handled
+        await harness.ReceiveUntilAsync(Channel.Control, (byte)ControlType.SourceList);
+        Assert.Equal(0, harness.AudioStreamersCreated);
+    }
+
+    [Fact]
     public async Task SecondViewer_WhileBusy_GetsBusyFrame()
     {
         await using var harness = await Harness.StartAsync();
@@ -85,7 +122,11 @@ public sealed class AudioSessionTests
 
         public HostSessionManager Manager { get; private set; } = null!;
 
+        private int _audioStreamersDisposed;
+
         public int AudioStreamersCreated => Volatile.Read(ref _audioStreamersCreated);
+
+        public int AudioStreamersDisposed => Volatile.Read(ref _audioStreamersDisposed);
 
         public static async Task<Harness> StartAsync()
         {
@@ -100,7 +141,7 @@ public sealed class AudioSessionTests
                 audioStreamerFactory: (_, sink) =>
                 {
                     Interlocked.Increment(ref harness._audioStreamersCreated);
-                    return new FakeAudioStreamer(sink);
+                    return new FakeAudioStreamer(sink, () => Interlocked.Increment(ref harness._audioStreamersDisposed));
                 });
             harness.Manager = manager;
             harness._run = manager.RunAsync(harness._link, harness._cts.Token);
@@ -184,7 +225,7 @@ public sealed class AudioSessionTests
         }
     }
 
-    private sealed class FakeAudioStreamer(IAudioSink sink) : IAudioStreamer
+    private sealed class FakeAudioStreamer(IAudioSink sink, Action onDispose) : IAudioStreamer
     {
         public void Start()
         {
@@ -192,9 +233,7 @@ public sealed class AudioSessionTests
             sink.OnAudioPacket(AudioMessages.BuildPacket(0, [1, 2, 3]));
         }
 
-        public void Dispose()
-        {
-        }
+        public void Dispose() => onDispose();
     }
 
     private sealed class NullInjector : IInputInjector

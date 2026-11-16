@@ -340,7 +340,7 @@ function selectSource(source) {
     maxHeight: landscape ? shortSide : longSide,
     maxFps: MAX_FPS,
     bitrateKbps: Number(el.bitrate.value) || 4000,
-    audio: state.caps.audioCodecs.includes('opus'),
+    audio: wantsAudio(),
   });
 }
 
@@ -441,6 +441,13 @@ async function toggleMute() {
     console.warn('Audio toggle failed', e);
   }
   el.mute.textContent = audio.muted ? '🔇' : '🔊';
+  // Host captures/sends audio only while the speaker is on (saves ~96 kbps when muted).
+  if (state.conn?.isAuthenticated) state.conn.sendControlJson(ControlType.SetAudio, { enabled: wantsAudio() });
+}
+
+/** Ask the host for audio only when we can decode Opus and the speaker is on. */
+function wantsAudio() {
+  return !audio.muted && !!state.caps?.audioCodecs.includes('opus');
 }
 
 function toggleFullscreen() {

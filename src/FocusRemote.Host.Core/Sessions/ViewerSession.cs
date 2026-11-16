@@ -175,6 +175,10 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
                 if (ControlMessages.TryDeserializeJson(payload, out SetInputModeMessage? mode))
                     _input.SetMode(ParseInputMode(mode!.Mode));
                 break;
+            case ControlType.SetAudio:
+                if (ControlMessages.TryDeserializeJson(payload, out SetAudioMessage? setAudio))
+                    SetAudio(setAudio!.Enabled);
+                break;
             case ControlType.Ping:
                 if (ControlMessages.TryParsePing(payload, out _))
                     _outbound.Enqueue(Channel.Control, (byte)ControlType.Pong, payload);
@@ -232,6 +236,29 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
         }
         streamer.Start();
         audio?.Start();
+    }
+
+    /// <summary>Starts/stops audio of the running stream (viewer muted/unmuted); video is untouched.</summary>
+    private void SetAudio(bool enabled)
+    {
+        IAudioStreamer? toDispose = null;
+        lock (_streamLock)
+        {
+            if (enabled)
+            {
+                if (_streamer is null || _audioStreamer is not null || !_viewerSupportsOpus)
+                    return;
+                // Started under the lock so a concurrent OnStreamStopped cannot dispose it before Start.
+                _audioStreamer = _audioStreamerFactory(_streamer.Source, this);
+                _audioStreamer.Start();
+            }
+            else
+            {
+                toDispose = _audioStreamer;
+                _audioStreamer = null;
+            }
+        }
+        toDispose?.Dispose();
     }
 
     /// <summary>Stops the current stream (if any) and returns its source id.</summary>
