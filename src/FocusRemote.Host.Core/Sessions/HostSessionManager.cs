@@ -6,6 +6,8 @@ using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Sessions.Interfaces;
 using FocusRemote.Host.Core.Sources.Interfaces;
 using FocusRemote.Host.Core.Sources.Models;
+using FocusRemote.Host.Core.Terminal;
+using FocusRemote.Host.Core.Terminal.Interfaces;
 using FocusRemote.Host.Core.Video;
 using FocusRemote.Host.Core.Video.Interfaces;
 using FocusRemote.Host.Core.Video.Models;
@@ -33,6 +35,9 @@ public sealed class HostSessionManager
     private readonly AuthFailureDelayPolicy _failurePolicy;
     private readonly Func<IInputInjector> _inputInjectorFactory;
     private readonly Func<CaptureSource, IAudioSink, IAudioStreamer> _audioStreamerFactory;
+    private readonly bool _terminalEnabled;
+    private readonly IShellCatalog _shellCatalog;
+    private readonly ITerminalProcessFactory _terminalProcessFactory;
     private readonly object _lock = new();
     private IViewerLink? _activeLink;
 
@@ -40,6 +45,9 @@ public sealed class HostSessionManager
     /// <param name="streamerFactory">Creates the video streamer; null = <see cref="VideoStreamer"/>.</param>
     /// <param name="inputInjectorFactory">Creates one input injector per viewer session; null = <see cref="InputInjector"/> (SendInput).</param>
     /// <param name="audioStreamerFactory">Creates the audio streamer; null = <see cref="AudioStreamer"/> (WASAPI loopback + Opus).</param>
+    /// <param name="terminalEnabled">Allow remote terminals (protocol §5.5); off by default.</param>
+    /// <param name="shellCatalog">Shells offered to the viewer; null = <see cref="ShellCatalog"/>.</param>
+    /// <param name="terminalProcessFactory">Starts shells; null = ConPTY.</param>
     public HostSessionManager(
         Func<byte[]?> rootKeyProvider,
         ISourceCatalog catalog,
@@ -47,7 +55,10 @@ public sealed class HostSessionManager
         Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer>? streamerFactory = null,
         AuthFailureDelayPolicy? failurePolicy = null,
         Func<IInputInjector>? inputInjectorFactory = null,
-        Func<CaptureSource, IAudioSink, IAudioStreamer>? audioStreamerFactory = null)
+        Func<CaptureSource, IAudioSink, IAudioStreamer>? audioStreamerFactory = null,
+        bool terminalEnabled = false,
+        IShellCatalog? shellCatalog = null,
+        ITerminalProcessFactory? terminalProcessFactory = null)
     {
         _rootKeyProvider = rootKeyProvider;
         _catalog = catalog;
@@ -56,6 +67,9 @@ public sealed class HostSessionManager
         _failurePolicy = failurePolicy ?? new AuthFailureDelayPolicy();
         _inputInjectorFactory = inputInjectorFactory ?? (() => new InputInjector(log));
         _audioStreamerFactory = audioStreamerFactory ?? ((source, sink) => new AudioStreamer(source, sink, log));
+        _terminalEnabled = terminalEnabled;
+        _shellCatalog = shellCatalog ?? new ShellCatalog();
+        _terminalProcessFactory = terminalProcessFactory ?? new PseudoConsoleProcessFactory();
     }
 
     /// <summary>Raised with the viewer origin when a viewer authenticates, and with null when it leaves.</summary>
@@ -63,6 +77,9 @@ public sealed class HostSessionManager
 
     /// <summary>Stream statistics of the active viewer (null when no stream).</summary>
     public event Action<StreamStats?>? StreamStatsChanged;
+
+    /// <summary>Number of open terminals of the active viewer (0 when it leaves).</summary>
+    public event Action<int>? TerminalCountChanged;
 
     /// <summary>True while an authenticated viewer is connected.</summary>
     public bool IsBusy
@@ -109,7 +126,8 @@ public sealed class HostSessionManager
 
             _log.Info($"Viewer {link.Origin}: authenticated");
             ViewerChanged?.Invoke(link.Origin);
-            using var viewer = new ViewerSession(link, session, _catalog, _log, _streamerFactory, stats => StreamStatsChanged?.Invoke(stats), _inputInjectorFactory(), _audioStreamerFactory);
+            using var viewer = new ViewerSession(link, session, _catalog, _log, _streamerFactory, stats => StreamStatsChanged?.Invoke(stats), _inputInjectorFactory(), _audioStreamerFactory,
+                _terminalEnabled, _shellCatalog, _terminalProcessFactory, count => TerminalCountChanged?.Invoke(count));
             try
             {
                 await viewer.RunAsync(cancellationToken);
@@ -119,6 +137,7 @@ public sealed class HostSessionManager
                 lock (_lock)
                     _activeLink = null;
                 StreamStatsChanged?.Invoke(null);
+                TerminalCountChanged?.Invoke(0);
                 ViewerChanged?.Invoke(null);
                 _log.Info($"Viewer {link.Origin}: disconnected");
             }

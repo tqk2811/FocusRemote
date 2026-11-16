@@ -50,9 +50,10 @@ public sealed class HostService : IAsyncDisposable
         await StopAsync();
         string id = settings.Id;
         byte[] key = rootKey.ToArray();
-        var manager = new HostSessionManager(() => key, new SourceCatalog(), _log, inputInjectorFactory: _inputInjectorFactory);
+        var manager = new HostSessionManager(() => key, new SourceCatalog(), _log, inputInjectorFactory: _inputInjectorFactory, terminalEnabled: settings.TerminalEnabled);
         manager.ViewerChanged += viewer => Update(s => s with { Viewer = viewer, Stream = viewer is null ? null : s.Stream });
         manager.StreamStatsChanged += stats => Update(s => s with { Stream = stats });
+        manager.TerminalCountChanged += count => Update(s => s with { TerminalCount = count });
         _manager = manager;
 
         bool relayEnabled = !string.IsNullOrWhiteSpace(settings.RelayUrl);

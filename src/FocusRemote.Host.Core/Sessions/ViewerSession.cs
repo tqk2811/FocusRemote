@@ -7,6 +7,8 @@ using FocusRemote.Host.Core.Sessions.Interfaces;
 using FocusRemote.Host.Core.Sources.Enums;
 using FocusRemote.Host.Core.Sources.Interfaces;
 using FocusRemote.Host.Core.Sources.Models;
+using FocusRemote.Host.Core.Terminal;
+using FocusRemote.Host.Core.Terminal.Interfaces;
 using FocusRemote.Host.Core.Video;
 using FocusRemote.Host.Core.Video.Interfaces;
 using FocusRemote.Host.Core.Video.Models;
@@ -23,6 +25,7 @@ namespace FocusRemote.Host.Core.Sessions;
 /// An authenticated viewer: one receive loop (this task) dispatches Control/Input, one writer task sends.
 /// Owns the <see cref="SecureSession"/>, the running <see cref="VideoStreamer"/> and its audio streamer.
 /// Audio runs only when SelectSource asks for it and the viewer listed "opus" in Capabilities.
+/// Terminal channel messages go to a <see cref="TerminalManager"/> whose shells die with the session.
 /// </summary>
 internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
 {
@@ -36,6 +39,7 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
     private readonly IInputInjector _input;
     private readonly object _streamLock = new();
     private readonly Func<CaptureSource, IAudioSink, IAudioStreamer> _audioStreamerFactory;
+    private readonly TerminalManager _terminals;
     private IVideoStreamer? _streamer;
     private IAudioStreamer? _audioStreamer;
     private volatile bool _viewerSupportsOpus;
@@ -48,7 +52,11 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
         Func<CaptureSource, SelectSourceMessage, IVideoSink, IVideoStreamer> streamerFactory,
         Action<StreamStats?> statsChanged,
         IInputInjector input,
-        Func<CaptureSource, IAudioSink, IAudioStreamer> audioStreamerFactory)
+        Func<CaptureSource, IAudioSink, IAudioStreamer> audioStreamerFactory,
+        bool terminalEnabled,
+        IShellCatalog shellCatalog,
+        ITerminalProcessFactory terminalProcessFactory,
+        Action<int> terminalCountChanged)
     {
         _link = link;
         _session = session;
@@ -58,6 +66,7 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
         _statsChanged = statsChanged;
         _input = input;
         _audioStreamerFactory = audioStreamerFactory;
+        _terminals = new TerminalManager(terminalEnabled, shellCatalog, terminalProcessFactory, _outbound, log, link.Origin, terminalCountChanged);
     }
 
     public bool IsCongested => _outbound.IsCongested;
@@ -70,6 +79,7 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
         {
             SendControl(ControlType.AuthOk, new AuthOkMessage { HostName = Environment.MachineName, Version = HostVersion });
             SendSourceList();
+            _terminals.SendShellList();
 
             await foreach (byte[] message in _link.Incoming.ReadAllAsync(cancellationToken))
             {
@@ -90,6 +100,7 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
         }
         finally
         {
+            _terminals.Dispose();
             StopStreamer();
             _input.ReleaseAll();
             _outbound.Complete();
@@ -118,6 +129,9 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
             case Channel.Input:
                 if (InputMessages.TryParse(type, payload, out InputMessage? input))
                     HandleInput(input!);
+                break;
+            case Channel.Terminal:
+                _terminals.Handle((TerminalType)type, payload);
                 break;
             default:
                 // Video/Audio from the viewer and reserved channels are ignored (protocol §5).

@@ -25,6 +25,14 @@ App Windows chia hai tầng: `FocusRemote.Host.Core` (toàn bộ logic, không p
 - Opus: `libopus` của bản FFmpeg LGPL (`application=lowdelay`, `frame_duration=20`, VBR, 96 kbps). Không có `libopus` thì DLL thử encoder `opus` gốc của FFmpeg (experimental).
 - Lỗi capture/encode âm thanh chỉ ghi log và dừng âm thanh, không dừng video.
 
+## Terminal
+
+- Mặc định tắt; bật bằng ô "Cho phép terminal từ xa" (`HostSettings.TerminalEnabled`). Tắt thì `ShellList.enabled = false` và mọi `Open` trả `Closed` `disabled`.
+- `ShellCatalog` dò một lần các shell có trên máy (`cmd`, `powershell`, `pwsh`, `gitbash`, `wsl`); viewer chỉ chọn theo `id`, dòng lệnh nằm cố định trong Host.
+- `TerminalManager` (một cái mỗi `ViewerSession`) giữ tối đa 8 terminal; viewer ngắt thì `Dispose` kill tất cả, không gửi `Closed`. Số terminal đang mở hiện ở dòng Viewer trong cửa sổ Host.
+- `PseudoConsoleProcess`: ConPTY + job object `KILL_ON_JOB_CLOSE` (tiến trình con chết theo). Luồng đọc output 16 KB một lần; input đi qua hàng đợi và luồng ghi riêng nên pipe đầy không chặn vòng nhận của phiên. Shell tự thoát thì luồng chờ đóng ConPTY trong lúc luồng đọc vẫn rút pipe (tránh treo `ClosePseudoConsole`), rồi mới báo `exited`. Thư mục làm việc là user profile.
+- Backpressure: output terminal chờ (ngủ ngắn) khi hàng gửi còn hơn 1 MiB output chưa gửi.
+
 ## Chạy E2E bằng trình duyệt thật
 
 Thành phần:

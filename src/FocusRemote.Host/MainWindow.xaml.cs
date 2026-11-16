@@ -40,6 +40,7 @@ public partial class MainWindow : Window
         LanEnabledBox.IsChecked = _settings.LanEnabled;
         LanPortBox.Text = _settings.LanPort.ToString(CultureInfo.InvariantCulture);
         StartWithWindowsBox.IsChecked = _settings.StartWithWindows;
+        TerminalEnabledBox.IsChecked = _settings.TerminalEnabled;
         UpdatePasswordHint();
         RenderStatus(_service.Status);
         if (startMinimized)
@@ -136,6 +137,7 @@ public partial class MainWindow : Window
                 LanEnabled = lanEnabled,
                 LanPort = port,
                 StartWithWindows = StartWithWindowsBox.IsChecked == true,
+                TerminalEnabled = TerminalEnabledBox.IsChecked == true,
             };
             _store.Save(settings);
             _settings = settings;
@@ -225,7 +227,8 @@ public partial class MainWindow : Window
                 RelayState.WaitingRetry => status.RelayDetail ?? "Chờ kết nối lại",
                 _ => status.RelayDetail ?? "Dừng",
             };
-        ViewerStatusText.Text = status.Viewer is null ? "Chưa có viewer" : "Đang kết nối: " + status.Viewer;
+        ViewerStatusText.Text = status.Viewer is null ? "Chưa có viewer"
+            : "Đang kết nối: " + status.Viewer + (status.TerminalCount > 0 ? $" ({status.TerminalCount} terminal đang mở)" : "");
         EncoderStatusText.Text = status.Stream is { } s
             ? $"{s.EncoderName} {s.Width}x{s.Height}, {s.Fps:F1} fps, {s.BitrateKbps:F0} kbps (nguồn {s.SourceId}{(s.DroppedFrames > 0 ? $", bỏ {s.DroppedFrames} khung" : "")})"
             : "Chưa stream";
