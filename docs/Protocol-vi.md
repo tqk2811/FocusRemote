@@ -62,7 +62,8 @@ Gói Sealed tới trước khi bắt tay xong thì bỏ qua.
 | 1 | Video |
 | 2 | Input |
 | 3 | Audio |
-| 4–255 | dự trữ cho chức năng sau (bên nhận bỏ qua kênh không biết) |
+| 4 | Terminal |
+| 5–255 | dự trữ cho chức năng sau (bên nhận bỏ qua kênh không biết) |
 
 ### 5.1 Control (payload JSON UTF-8, tên trường camelCase, trừ khi ghi khác)
 
@@ -108,13 +109,31 @@ Khi xem một cửa sổ, Host đưa cửa sổ đó lên trước (`SetForegrou
 - type `0x01` Config: JSON `{"codec":"opus","sampleRate":48000,"channels":2}`.
 - type `0x02` Packet: `timestampUs u64`, rồi một gói Opus thô.
 
+### 5.5 Terminal (hai chiều)
+
+Terminal từ xa: Host chạy shell trong Windows ConPTY (`CreatePseudoConsole`), viewer hiển thị bằng xterm.js. Mặc định **tắt**: chủ máy phải bật "Cho phép terminal" trong Host. `terminalId` (`u32`) do viewer chọn, duy nhất trong phiên. Mỗi phiên tối đa 8 terminal; viewer ngắt kết nối thì Host kill toàn bộ tiến trình của mọi terminal (job object). Viewer chỉ chọn shell theo `id` trong danh sách Host gửi, không gửi được dòng lệnh tuỳ ý.
+
+| type | Tên | Chiều | Payload |
+|---|---|---|---|
+| `0x01` | ListShells | V→H | `{}` |
+| `0x02` | ShellList | H→V | `{"enabled":true,"shells":[{"id":"pwsh","name":"PowerShell 7"}]}`; tắt thì `enabled:false`, `shells:[]`. Host gửi tự động ngay sau `SourceList`. `id` có thể là `cmd`, `powershell`, `pwsh`, `gitbash`, `wsl` (chỉ những shell có trên máy) |
+| `0x10` | Open | V→H | `{"terminalId":1,"shellId":"pwsh","cols":120,"rows":30}` |
+| `0x11` | Opened | H→V | `{"terminalId":1,"shellId":"pwsh"}` |
+| `0x12` | Closed | H→V | `{"terminalId":1,"reason":"exited","exitCode":0,"message":null}`; `reason`: `exited` (shell tự thoát), `closed` (viewer đóng), `disabled`, `shell_not_found`, `start_failed`, `limit`, `duplicate_id` |
+| `0x20` | Input | V→H | `terminalId u32`, rồi byte UTF-8 người dùng gõ (gồm chuỗi VT của phím đặc biệt, vd `\x1b[A`) |
+| `0x21` | Output | H→V | `terminalId u32`, rồi byte đầu ra của ConPTY (UTF-8 kèm chuỗi VT; một ký tự UTF-8 có thể bị cắt giữa hai gói) |
+| `0x22` | Resize | V→H | `terminalId u32`, `cols u16`, `rows u16` (bằng 0 thì bỏ gói) |
+| `0x23` | Close | V→H | `terminalId u32`; Host đóng ConPTY, kill tiến trình rồi trả `Closed` với `reason:"closed"` |
+
+Gói Input/Resize/Close cho `terminalId` không tồn tại thì bỏ qua.
+
 ## 6. Vector kiểm thử
 
 `src/FocusRemote.Protocol.Tests/TestVectors.json` chứa vector tính khoá (PBKDF2 đủ 600000 vòng) và gói Sealed mẫu cho mỗi chiều (counter bắt đầu từ 0, liên tiếp). Bản C# và bản JS phải cùng ra đúng các giá trị đó. File được sinh bằng WebCrypto của Node và test C# khẳng định tái tạo đúng.
 
 ## 7. Quy ước khi đặc tả chưa nói rõ
 
-- Gói Input/Video/Audio có byte thừa ở cuối thì bên nhận bỏ qua phần thừa (để mở rộng về sau); gói ngắn hơn mức tối thiểu thì bỏ gói đó.
+- Gói Input/Video/Audio/Terminal (nhị phân) có byte thừa ở cuối thì bên nhận bỏ qua phần thừa (để mở rộng về sau); gói ngắn hơn mức tối thiểu thì bỏ gói đó.
 - Bit không dùng trong `flags` của Video Frame bị bỏ qua.
 - JSON của Control: trường lạ bị bỏ qua; thiếu trường bắt buộc hoặc JSON hỏng thì bỏ gói, không đóng phiên.
 - Độ dài password tính theo số đơn vị UTF-16 (giống `string.length` của JS).
