@@ -13,6 +13,7 @@ public enum ControlType : byte
     StopStream = 0x14,
     StreamStopped = 0x15,
     RequestKeyframe = 0x16,
+    SetInputMode = 0x17,
     Ping = 0x20,
     Pong = 0x21,
     Error = 0x30,

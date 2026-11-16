@@ -1,6 +1,7 @@
 using System.Reflection;
 using FocusRemote.Host.Core.Audio.Interfaces;
 using FocusRemote.Host.Core.Input;
+using FocusRemote.Host.Core.Input.Enums;
 using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Models;
@@ -170,6 +171,10 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
                 lock (_streamLock)
                     _streamer?.RequestKeyframe();
                 break;
+            case ControlType.SetInputMode:
+                if (ControlMessages.TryDeserializeJson(payload, out SetInputModeMessage? mode))
+                    _input.SetMode(ParseInputMode(mode!.Mode));
+                break;
             case ControlType.Ping:
                 if (ControlMessages.TryParsePing(payload, out _))
                     _outbound.Enqueue(Channel.Control, (byte)ControlType.Pong, payload);
@@ -178,6 +183,10 @@ internal sealed class ViewerSession : IVideoSink, IAudioSink, IDisposable
                 break;
         }
     }
+
+    /// <summary>"message" selects PostMessage injection; anything else (or an old viewer that never asks) means SendInput.</summary>
+    internal static InputMode ParseInputMode(string? mode)
+        => string.Equals(mode, SetInputModeMessage.Message, StringComparison.OrdinalIgnoreCase) ? InputMode.Message : InputMode.SendInput;
 
     private void HandleInput(InputMessage input)
     {

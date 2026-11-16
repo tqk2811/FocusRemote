@@ -16,6 +16,21 @@ const SOFT_SENTINEL = ' ';     // kept in the hidden input so Backspace always 
 // DOM MouseEvent.button -> protocol button
 const DOM_BUTTON = { 0: MouseButton.Left, 1: MouseButton.Middle, 2: MouseButton.Right, 3: MouseButton.X1, 4: MouseButton.X2 };
 
+/**
+ * Character a key press types, for the host's message input mode (posted WM_KEYDOWN cannot carry Shift state):
+ * e.key when it is a single code point and no Ctrl/Alt/Meta chord is held (AltGr counts as typing). Null otherwise.
+ */
+export function printableKeyText(e) {
+  const key = e?.key;
+  if (typeof key !== 'string' || [...key].length !== 1) return null;
+  const code = key.codePointAt(0);
+  if (code < 0x20 || code === 0x7f) return null;
+  const altGr = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
+  if (!altGr && (e.ctrlKey || e.altKey)) return null;
+  if (e.metaKey) return null;
+  return key;
+}
+
 export function normalizePoint(clientX, clientY, rect) {
   const nx = (clientX - rect.left) / rect.width;
   const ny = (clientY - rect.top) / rect.height;
@@ -60,6 +75,7 @@ export class InputController {
   constructor(options) {
     this.o = options;
     this.mode = 'touch'; // touch mode: 'touch' (tap at the finger) | 'mouse' (relative cursor)
+    this.textKeys = false; // host message mode: printable keys go as Text instead of Key
     this.pressedKeys = new Set();
     this.pressedButtons = new Set();
     this.pendingMove = null;
@@ -78,6 +94,11 @@ export class InputController {
     this._cancelTouch();
     this.mode = mode === 'mouse' ? 'mouse' : 'touch';
     this._updateCursorOverlay();
+  }
+
+  /** Host message input mode on a window source: send printable key presses as Text (see printableKeyText). */
+  setTextKeys(on) {
+    this.textKeys = !!on;
   }
 
   releaseAll() {
@@ -202,6 +223,11 @@ export class InputController {
     }
     if (!e.code || !/^[\x20-\x7e]{1,255}$/.test(e.code)) return;
     e.preventDefault();
+    if (down && this.textKeys && t !== this.o.softInput) {
+      const text = printableKeyText(e);
+      // Not tracked as pressed, so its keyup is dropped too.
+      if (text !== null) { this._send(InputType.Text, buildText(text)); return; }
+    }
     if (down) this.pressedKeys.add(e.code);
     else if (!this.pressedKeys.delete(e.code)) return;
     this._send(InputType.Key, buildKey(down, e.code));

@@ -45,6 +45,10 @@
         <option value="touch">Chạm</option>
         <option value="mouse">Chuột</option>
       </select>
+      <select id="inputModeSelect" title="Cách gửi input tới cửa sổ: SendInput chiếm chuột/bàn phím thật của Host; Gửi message không chiếm nhưng chỉ chạy với app nhận message" hidden>
+        <option value="sendinput">SendInput</option>
+        <option value="message" title="Không chiếm chuột/bàn phím thật của Host; chỉ chạy với app nhận message. Phím tắt Ctrl/Alt (Ctrl+C, Alt+F4…) có thể không chạy">Gửi message</option>
+      </select>
       <button id="terminalButton" type="button" title="Terminal từ xa" aria-pressed="false">&gt;_ Terminal</button>
       <button id="keyboardButton" type="button" title="Bàn phím ảo" hidden>⌨</button>
       <button id="muteButton" type="button" title="Bật/tắt tiếng">🔇</button>
