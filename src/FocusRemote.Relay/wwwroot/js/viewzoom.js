@@ -92,7 +92,7 @@ export class ViewZoom {
   zoomAt(zoom, ax, ay) { this._update((v, g) => zoomAt(v, zoom, ax, ay, g.base, g.sw, g.sh)); }
   panBy(dx, dy) { this._update((v, g) => panBy(v, dx, dy, g.base, g.sw, g.sh)); }
 
-  /** Keeps a normalized video point visible (touchpad cursor). */
+  /** Keeps a normalized video point visible (mouse-mode cursor). */
   ensureVisible(nx, ny, margin) {
     if (!this.zoomed) return;
     this._update((v, g) => {

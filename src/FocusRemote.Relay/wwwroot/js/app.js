@@ -14,6 +14,7 @@ import { TerminalPanel } from './terminal.js';
 import { ViewZoom } from './viewzoom.js';
 
 const STORAGE_KEY = 'focusremote.login';
+const TOUCH_MODE_KEY = 'focusremote.touchMode'; // 'touch' | 'mouse'
 const PING_INTERVAL_MS = 2000;
 const MAX_FPS = 30;
 
@@ -462,7 +463,12 @@ function init() {
   el.mute.addEventListener('click', toggleMute);
   el.fullscreen.addEventListener('click', toggleFullscreen);
   el.keyboard.addEventListener('click', () => input.openSoftKeyboard());
-  el.touchMode.addEventListener('change', () => input.setTouchMode(el.touchMode.value));
+  try { const m = localStorage.getItem(TOUCH_MODE_KEY); if (m === 'touch' || m === 'mouse') el.touchMode.value = m; } catch { /* storage unavailable */ }
+  input.setTouchMode(el.touchMode.value);
+  el.touchMode.addEventListener('change', () => {
+    input.setTouchMode(el.touchMode.value);
+    try { localStorage.setItem(TOUCH_MODE_KEY, el.touchMode.value); } catch { /* storage unavailable */ }
+  });
   if (!audio.supported) { el.mute.disabled = true; el.mute.title = 'Trình duyệt không hỗ trợ giải mã âm thanh'; }
 
   if (isTouchDevice) {
