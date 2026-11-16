@@ -27,6 +27,7 @@ public sealed class LanServer : IAsyncDisposable
     private const WebSocketCloseStatus NoHost = (WebSocketCloseStatus)4004;
     private const WebSocketCloseStatus Conflict = (WebSocketCloseStatus)4009;
 
+    private readonly IPAddress _bindAddress;
     private readonly int _port;
     private readonly X509Certificate2 _certificate;
     private readonly string? _webRoot;
@@ -36,10 +37,12 @@ public sealed class LanServer : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private WebApplication? _app;
 
-    /// <param name="port">TCP port on all interfaces; 0 picks a free port (see <see cref="BoundPort"/>).</param>
+    /// <param name="bindAddress">Interface to listen on: <see cref="IPAddress.Any"/> for LAN, <see cref="IPAddress.Loopback"/> for tests.</param>
+    /// <param name="port">TCP port; 0 picks a free port (see <see cref="BoundPort"/>).</param>
     /// <param name="webRoot">Folder with the WebViewer files; null/missing = WebSocket only.</param>
-    public LanServer(int port, X509Certificate2 certificate, string? webRoot, Func<string> idProvider, HostSessionManager manager, IAppLog log)
+    public LanServer(IPAddress bindAddress, int port, X509Certificate2 certificate, string? webRoot, Func<string> idProvider, HostSessionManager manager, IAppLog log)
     {
+        _bindAddress = bindAddress;
         _port = port;
         _certificate = certificate;
         _webRoot = webRoot;
@@ -60,7 +63,7 @@ public sealed class LanServer : IAsyncDisposable
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options =>
         {
-            options.Listen(IPAddress.Any, _port, listen => listen.UseHttps(_certificate));
+            options.Listen(_bindAddress, _port, listen => listen.UseHttps(_certificate));
             options.Limits.MaxRequestBodySize = 1024 * 1024;
         });
 

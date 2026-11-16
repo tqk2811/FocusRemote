@@ -29,6 +29,7 @@ var settings = new HostSettings
     RelayUrl = options.RelayUrl ?? string.Empty,
     LanEnabled = options.LanPort is not null,
     LanPort = options.LanPort ?? HostSettings.DefaultLanPort,
+    LanLoopbackOnly = true,
 };
 await service.StartAsync(settings, rootKey);
 log.Info("READY");
