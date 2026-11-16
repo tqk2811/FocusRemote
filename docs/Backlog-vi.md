@@ -6,8 +6,8 @@ Hiện vượt rate limit thì trả HTTP 429 trước khi nâng cấp WebSocket
 ## [Thấp] Relay: test lỗi kết nối
 Chưa có test client rớt giữa chừng, bên nhận chậm.
 
-## [Vừa] Encoder: h264_qsv chưa zero-copy
-Bản FFmpeg này h264_qsv chỉ nhận nv12/qsv → máy Intel đi đường bộ nhớ hệ thống. Cần derive frame D3D11 → QSV. Chưa thử HEVC/qsv/amf.
+## [Vừa] Encoder: hevc_qsv lỗi trên Intel UHD, chưa thử amf
+hevc_qsv mở được nhưng `avcodec_send_frame` trả "Invalid data found" ở cả đường D3D11→QSV lẫn bộ nhớ hệ thống (Intel UHD, 2560x1600). h264_qsv đã zero-copy khi device D3D11 nằm trên GPU Intel. Chưa thử `*_amf`.
 
 ## [Vừa] Host: toạ độ input của cửa sổ theo khung DWM, chưa tính phần thu nhỏ/che
 Input cửa sổ quy đổi theo `DWMWA_EXTENDED_FRAME_BOUNDS` (đúng vùng WinRT capture, gồm cả thanh tiêu đề) chứ không phải client area. Cửa sổ thu nhỏ thì capture dừng nhưng stream vẫn mở; chưa báo viewer.

@@ -149,8 +149,17 @@ public:
 		{
 			if (OpenCodec(name))
 				return 0;
+			bool triedZeroCopy = _isZeroCopy;
 			errors += name + ": " + _lastError + "; ";
 			CloseCodec();
+			// D3D11/QSV frame setup failed: the same encoder may still work with system-memory frames.
+			if (triedZeroCopy)
+			{
+				if (OpenCodec(name, true))
+					return 0;
+				errors += name + " (system memory): " + _lastError + "; ";
+				CloseCodec();
+			}
 		}
 		return Fail("no encoder could be opened (" + errors + ")");
 	}
@@ -195,7 +204,7 @@ private:
 		AVFrame* frame = av_frame_alloc();
 		if (!frame)
 			return Fail("av_frame_alloc failed");
-		int32_t result = _isZeroCopy ? FillHardwareFrame(frame) : FillSoftwareFrame(frame);
+		int32_t result = !_isZeroCopy ? FillSoftwareFrame(frame) : _isQsv ? FillQsvFrame(frame) : FillHardwareFrame(frame);
 		if (result != 0)
 		{
 			av_frame_free(&frame);
@@ -393,32 +402,30 @@ private:
 		_codec->color_trc = AVCOL_TRC_BT709;
 		_codec->flags |= AV_CODEC_FLAG_LOW_DELAY; // no GLOBAL_HEADER: SPS/PPS stay in-band (Annex B)
 
-		_isZeroCopy = !forceSystemMemoryFrames && SupportsD3D11Frames(codec);
+		// h264_qsv/hevc_qsv only take nv12 or qsv frames: zero-copy maps our D3D11 frames into a QSV
+		// frames context derived from them. That needs the D3D11 device on an Intel adapter; on another
+		// adapter QSV opens its own Intel device and we feed it system-memory frames.
+		_isQsv = name.ends_with("_qsv");
+		_isZeroCopy = !forceSystemMemoryFrames && (_isQsv ? _vendorId == VendorIntel : SupportsD3D11Frames(codec));
 		if (_isZeroCopy)
 		{
-			_codec->pix_fmt = AV_PIX_FMT_D3D11;
-			_hwFrames = av_hwframe_ctx_alloc(_hwDevice);
-			if (!_hwFrames)
-			{
-				Fail("av_hwframe_ctx_alloc failed");
+			// Pool size 0 = one texture per pool entry (no texture array): NV12 texture arrays with
+			// BIND_RENDER_TARGET fail with E_INVALIDARG (seen on NVIDIA RTX 4060 and Intel UHD).
+			// QSV derives from such a dynamic pool fine.
+			if (!CreateD3D11Frames())
 				return false;
-			}
-			auto framesContext = reinterpret_cast<AVHWFramesContext*>(_hwFrames->data);
-			framesContext->format = AV_PIX_FMT_D3D11;
-			framesContext->sw_format = AV_PIX_FMT_NV12;
-			framesContext->width = _options.width;
-			framesContext->height = _options.height;
-			// 0 = one texture per pool entry (no texture array): NV12 texture arrays with
-			// BIND_RENDER_TARGET fail with E_INVALIDARG on some drivers (seen on NVIDIA RTX 4060).
-			framesContext->initial_pool_size = 0;
-			static_cast<AVD3D11VAFramesContext*>(framesContext->hwctx)->BindFlags = D3D11_BIND_RENDER_TARGET;
-			int ret = av_hwframe_ctx_init(_hwFrames);
-			if (ret < 0)
+			if (_isQsv)
 			{
-				Fail("av_hwframe_ctx_init failed: " + AvError(ret));
-				return false;
+				if (!CreateQsvFrames())
+					return false;
+				_codec->pix_fmt = AV_PIX_FMT_QSV;
+				_codec->hw_frames_ctx = av_buffer_ref(_qsvFrames);
 			}
-			_codec->hw_frames_ctx = av_buffer_ref(_hwFrames);
+			else
+			{
+				_codec->pix_fmt = AV_PIX_FMT_D3D11;
+				_codec->hw_frames_ctx = av_buffer_ref(_hwFrames);
+			}
 		}
 		else
 		{
@@ -437,6 +444,49 @@ private:
 			return false;
 		}
 		_encoderName = name;
+		return true;
+	}
+
+	bool CreateD3D11Frames()
+	{
+		_hwFrames = av_hwframe_ctx_alloc(_hwDevice);
+		if (!_hwFrames)
+		{
+			Fail("av_hwframe_ctx_alloc failed");
+			return false;
+		}
+		auto framesContext = reinterpret_cast<AVHWFramesContext*>(_hwFrames->data);
+		framesContext->format = AV_PIX_FMT_D3D11;
+		framesContext->sw_format = AV_PIX_FMT_NV12;
+		framesContext->width = _options.width;
+		framesContext->height = _options.height;
+		framesContext->initial_pool_size = 0;
+		static_cast<AVD3D11VAFramesContext*>(framesContext->hwctx)->BindFlags = D3D11_BIND_RENDER_TARGET;
+		int ret = av_hwframe_ctx_init(_hwFrames);
+		if (ret < 0)
+		{
+			Fail("av_hwframe_ctx_init failed: " + AvError(ret));
+			return false;
+		}
+		return true;
+	}
+
+	bool CreateQsvFrames()
+	{
+		AVBufferRef* qsvDevice = nullptr;
+		int ret = av_hwdevice_ctx_create_derived(&qsvDevice, AV_HWDEVICE_TYPE_QSV, _hwDevice, 0);
+		if (ret < 0)
+		{
+			Fail("deriving QSV device from D3D11 failed: " + AvError(ret));
+			return false;
+		}
+		ret = av_hwframe_ctx_create_derived(&_qsvFrames, AV_PIX_FMT_QSV, qsvDevice, _hwFrames, 0);
+		av_buffer_unref(&qsvDevice); // the frames context keeps its own reference
+		if (ret < 0)
+		{
+			Fail("deriving QSV frames from D3D11 failed: " + AvError(ret));
+			return false;
+		}
 		return true;
 	}
 
@@ -518,6 +568,25 @@ private:
 		auto texture = reinterpret_cast<ID3D11Texture2D*>(frame->data[0]);
 		auto arrayIndex = static_cast<UINT>(reinterpret_cast<intptr_t>(frame->data[1]));
 		return Convert(texture, arrayIndex);
+	}
+
+	// D3D11 frame -> QSV frame over the same texture (the mapped frame keeps the D3D11 frame alive).
+	int32_t FillQsvFrame(AVFrame* frame)
+	{
+		AVFrame* d3d11Frame = av_frame_alloc();
+		if (!d3d11Frame)
+			return Fail("av_frame_alloc failed");
+		int32_t result = FillHardwareFrame(d3d11Frame);
+		if (result == 0)
+		{
+			frame->format = AV_PIX_FMT_QSV;
+			frame->hw_frames_ctx = av_buffer_ref(_qsvFrames);
+			int ret = frame->hw_frames_ctx ? av_hwframe_map(frame, d3d11Frame, AV_HWFRAME_MAP_READ) : AVERROR(ENOMEM);
+			if (ret < 0)
+				result = Fail("av_hwframe_map(D3D11 -> QSV) failed: " + AvError(ret));
+		}
+		av_frame_free(&d3d11Frame);
+		return result;
 	}
 
 	int32_t FillSoftwareFrame(AVFrame* frame)
@@ -605,7 +674,9 @@ private:
 	void CloseCodec()
 	{
 		avcodec_free_context(&_codec);
+		av_buffer_unref(&_qsvFrames);
 		av_buffer_unref(&_hwFrames);
+		_isQsv = false;
 		_outputViews.clear();
 		_nv12Texture.Reset();
 		_nv12Staging.Reset();
@@ -640,7 +711,9 @@ private:
 	std::map<std::pair<ID3D11Texture2D*, UINT>, ComPtr<ID3D11VideoProcessorOutputView>> _outputViews;
 
 	AVCodecContext* _codec = nullptr;
-	AVBufferRef* _hwFrames = nullptr;
+	AVBufferRef* _hwFrames = nullptr;  // D3D11 NV12 frames the video processor writes into
+	AVBufferRef* _qsvFrames = nullptr; // QSV frames derived from _hwFrames (QSV zero-copy only)
+	bool _isQsv = false;
 	bool _isZeroCopy = false;
 	int64_t _framesSent = 0;
 	std::string _encoderName;
