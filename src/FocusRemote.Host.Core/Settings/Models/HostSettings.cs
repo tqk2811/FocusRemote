@@ -17,6 +17,10 @@ public sealed class HostSettings
 
     public int LanPort { get; set; } = DefaultLanPort;
 
+    /// <summary>Bind the LAN server to 127.0.0.1 only (tests/E2E harness: no firewall prompt). Not persisted.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool LanLoopbackOnly { get; set; }
+
     public bool StartWithWindows { get; set; }
 
     /// <summary>Allow remote terminals (full command execution on this machine). Off by default.</summary>

@@ -80,7 +80,7 @@ public sealed class HostService : IAsyncDisposable
             {
                 IReadOnlyList<IPAddress> addresses = LanAddressProvider.GetLocalIPv4Addresses();
                 _certificate = new LanCertificateManager(AppPaths.LanCertificateFile, _log).GetOrCreate(Environment.MachineName, addresses);
-                var lan = new LanServer(settings.LanPort, _certificate, _webRoot, () => id, manager, _log);
+                var lan = new LanServer(settings.LanLoopbackOnly ? IPAddress.Loopback : IPAddress.Any, settings.LanPort, _certificate, _webRoot, () => id, manager, _log);
                 await lan.StartAsync();
                 _lan = lan;
                 IReadOnlyList<string> urls = LanAddressProvider.BuildUrls(addresses, Environment.MachineName, lan.BoundPort);

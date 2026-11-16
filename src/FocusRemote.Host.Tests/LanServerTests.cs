@@ -26,7 +26,7 @@ public sealed class LanServerTests : IAsyncLifetime
         byte[] pfx = LanCertificateManager.CreatePfx("testhost", [IPAddress.Parse("192.168.77.5")]);
         _certificate = new X509Certificate2(pfx, (string?)null, X509KeyStorageFlags.UserKeySet);
         var manager = new HostSessionManager(() => _rootKey, new SourceCatalog(), _log);
-        _server = new LanServer(0, _certificate, FindWebRoot(), () => Id, manager, _log);
+        _server = new LanServer(IPAddress.Loopback, 0, _certificate, FindWebRoot(), () => Id, manager, _log);
         await _server.StartAsync();
     }
 
