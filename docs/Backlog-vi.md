@@ -9,8 +9,8 @@ Hàng đợi mỗi chiều giới hạn 64 message; với message 16 MiB có th�
 ## [Thấp] Relay: test lỗi kết nối
 Chưa có test client rớt giữa chừng, bên nhận chậm.
 
-## [Vừa] Encoder: h264_qsv chưa zero-copy
-Bản FFmpeg này h264_qsv chỉ nhận nv12/qsv → máy Intel đi đường bộ nhớ hệ thống. Cần derive frame D3D11 → QSV. Chưa thử HEVC/qsv/amf.
+## [Vừa] Encoder: hevc_qsv lỗi trên Intel UHD, chưa thử amf
+hevc_qsv mở được nhưng `avcodec_send_frame` trả "Invalid data found" ở cả đường D3D11→QSV lẫn bộ nhớ hệ thống (Intel UHD, 2560x1600). h264_qsv đã zero-copy khi device D3D11 nằm trên GPU Intel. Chưa thử `*_amf`.
 
 ## [Thấp] Encoder: nvenc tốn bitrate khi khung tĩnh
 VBR không đặt `cq`, khung tĩnh ~3.5 MB/5 s. Tinh chỉnh sau.
