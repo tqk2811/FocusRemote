@@ -74,6 +74,27 @@ internal static class NativeMethods
         public INPUTUNION u;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct GUITHREADINFO
+    {
+        public int cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+
     internal const uint INPUT_MOUSE = 0;
     internal const uint INPUT_KEYBOARD = 1;
 
@@ -108,6 +129,7 @@ internal static class NativeMethods
     internal const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
     internal const int DWMWA_CLOAKED = 14;
     internal const int SW_RESTORE = 9;
+    internal const uint GA_ROOT = 2;
     internal const uint GA_ROOTOWNER = 3;
     internal const byte VK_MENU = 0x12;
 
@@ -193,4 +215,45 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PostMessage(IntPtr hWnd, uint msg, nint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr ChildWindowFromPointEx(IntPtr hwndParent, POINT pt, uint uFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO pgui);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr RealChildWindowFromPoint(IntPtr hwndParent, POINT ptParentClientCoords);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowEnabled(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
+    internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, nint wParam, nint lParam, uint fuFlags, uint uTimeout, out nint lpdwResult);
+
+    [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW")]
+    internal static extern nint GetClassLongPtr(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetDoubleClickTime();
+
+    internal const uint SMTO_ABORTIFHUNG = 0x0002;
+    internal const int GCL_STYLE = -26;
+    internal const int CS_DBLCLKS = 0x0008;
+    internal const int SM_CXDOUBLECLK = 36;
+    internal const int SM_CYDOUBLECLK = 37;
 }

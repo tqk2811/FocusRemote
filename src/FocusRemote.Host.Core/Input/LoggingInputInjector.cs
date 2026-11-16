@@ -1,3 +1,4 @@
+using FocusRemote.Host.Core.Input.Enums;
 using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Logging.Interfaces;
 using FocusRemote.Host.Core.Models;
@@ -24,6 +25,8 @@ public sealed class LoggingInputInjector : IInputInjector
         => _log.Info(LogPrefix + Describe(message, target));
 
     public void ReleaseAll() => _log.Info(LogPrefix + "ReleaseAll");
+
+    public void SetMode(InputMode mode) => _log.Info(LogPrefix + "Mode " + mode);
 
     /// <summary>Human-readable form, e.g. <c>MouseMove x=100 y=50</c> (desktop pixels).</summary>
     public static string Describe(InputMessage message, PixelRect target) => message switch

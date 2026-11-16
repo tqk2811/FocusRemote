@@ -1,3 +1,4 @@
+using FocusRemote.Host.Core.Input.Enums;
 using FocusRemote.Host.Core.Models;
 using FocusRemote.Protocol.Messages.Models.Input;
 
@@ -7,9 +8,14 @@ namespace FocusRemote.Host.Core.Input.Interfaces;
 public interface IInputInjector
 {
     /// <param name="target">Current bounds (physical pixels) of the streamed window/monitor.</param>
-    /// <param name="foregroundWindow">Window to bring to the foreground before clicks/keys; IntPtr.Zero for a monitor.</param>
+    /// <param name="foregroundWindow">Streamed window (brought to the foreground in SendInput mode, message target in Message mode); IntPtr.Zero for a monitor.</param>
     void Handle(InputMessage message, PixelRect target, IntPtr foregroundWindow);
 
     /// <summary>Releases every key and mouse button pressed through this injector.</summary>
     void ReleaseAll();
+
+    /// <summary>Switches how input reaches window sources (protocol Control SetInputMode). Monitors always use SendInput.</summary>
+    void SetMode(InputMode mode)
+    {
+    }
 }

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using FocusRemote.Host.Core.Input.Enums;
 using FocusRemote.Host.Core.Input.Interfaces;
 using FocusRemote.Host.Core.Input.Models;
 using FocusRemote.Host.Core.Logging.Interfaces;
@@ -12,7 +13,8 @@ namespace FocusRemote.Host.Core.Input;
 
 /// <summary>
 /// Replays viewer input with SendInput (protocol §5.3). Tracks held keys/buttons so <see cref="ReleaseAll"/>
-/// can undo them. Not thread-safe: call from the session's receive thread only.
+/// can undo them. In <see cref="InputMode.Message"/> mode, window sources go to a <see cref="MessageInputInjector"/>
+/// (PostMessage, no foreground change) instead. Not thread-safe: call from the session's receive thread only.
 /// </summary>
 public sealed class InputInjector : IInputInjector
 {
@@ -23,16 +25,34 @@ public sealed class InputInjector : IInputInjector
     private readonly HashSet<MouseButton> _heldButtons = [];
     private int _lastAbsX;
     private int _lastAbsY;
+    private readonly MessageInputInjector _messages;
+    private InputMode _mode = InputMode.SendInput;
 
     public InputInjector(IAppLog log)
     {
         _log = log;
+        _messages = new MessageInputInjector(log);
+    }
+
+    public void SetMode(InputMode mode)
+    {
+        if (mode == _mode)
+            return;
+        // Nothing held in the old mode may stay stuck once the other path takes over.
+        ReleaseAll();
+        _mode = mode;
+        _log.Info($"Input mode: {mode}");
     }
 
     /// <param name="target">Current bounds (physical pixels) of the streamed window/monitor.</param>
-    /// <param name="foregroundWindow">Window to bring to the foreground before clicks/keys; IntPtr.Zero for a monitor.</param>
+    /// <param name="foregroundWindow">Streamed window (foreground target in SendInput mode, message target in Message mode); IntPtr.Zero for a monitor.</param>
     public void Handle(InputMessage message, PixelRect target, IntPtr foregroundWindow)
     {
+        if (_mode == InputMode.Message && foregroundWindow != IntPtr.Zero)
+        {
+            _messages.Handle(message, target, foregroundWindow);
+            return;
+        }
         switch (message)
         {
             case MouseMoveInput m:
@@ -77,6 +97,7 @@ public sealed class InputInjector : IInputInjector
     /// <summary>Releases every key and mouse button pressed through this injector.</summary>
     public void ReleaseAll()
     {
+        _messages.ReleaseAll();
         foreach (string code in _heldKeys)
         {
             if (KeyCodeMap.TryGet(code, out KeyMapping key))

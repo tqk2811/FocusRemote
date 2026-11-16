@@ -12,9 +12,11 @@ import { AudioPlayer, detectAudioCodecs } from './audio.js';
 import { InputController } from './input.js';
 import { TerminalPanel } from './terminal.js';
 import { ViewZoom } from './viewzoom.js';
+import { InputMode, normalizeInputMode, isWindowSource } from './inputmode.js';
 
 const STORAGE_KEY = 'focusremote.login';
 const TOUCH_MODE_KEY = 'focusremote.touchMode'; // 'touch' | 'mouse'
+const INPUT_MODE_KEY = 'focusremote.inputMode'; // 'sendinput' | 'message'
 const PING_INTERVAL_MS = 2000;
 const MAX_FPS = 30;
 
@@ -24,7 +26,7 @@ const el = {
   password: $('passwordInput'), loginError: $('loginError'), loginStatus: $('loginStatus'),
   connect: $('connectButton'), envWarning: $('envWarning'),
   sessionView: $('sessionView'), sourcesButton: $('sourcesButton'), hostName: $('hostName'), latency: $('latency'),
-  touchMode: $('touchModeSelect'), keyboard: $('keyboardButton'), mute: $('muteButton'),
+  touchMode: $('touchModeSelect'), inputMode: $('inputModeSelect'), keyboard: $('keyboardButton'), mute: $('muteButton'),
   fullscreen: $('fullscreenButton'), disconnect: $('disconnectButton'),
   sourcesPanel: $('sourcesPanel'), refreshSources: $('refreshSourcesButton'), bitrate: $('bitrateSelect'),
   sourceList: $('sourceList'), stopStream: $('stopStreamButton'),
@@ -205,6 +207,7 @@ function onAuthOk(info) {
     videoCodecs: state.caps.videoCodecs,
     audioCodecs: state.caps.audioCodecs,
   });
+  sendInputMode();
   sendPing();
   state.pingTimer = setInterval(sendPing, PING_INTERVAL_MS);
   setSourcesOpen(true);
@@ -303,6 +306,19 @@ function onAudio(type, payload) {
   }
 }
 
+/** Tells the host how to inject input for window sources; the host keeps it for this session. */
+function sendInputMode() {
+  if (state.conn?.isAuthenticated) state.conn.sendControlJson(ControlType.SetInputMode, { mode: normalizeInputMode(el.inputMode.value) });
+}
+
+/** The mode selector is shown only while a window is being viewed (monitors always use SendInput). */
+function updateInputModeVisibility() {
+  const isWindow = isWindowSource(state.sources, state.activeSourceId);
+  el.inputMode.hidden = !isWindow;
+  el.inputMode.disabled = !isWindow;
+  input.setTextKeys(isWindow && normalizeInputMode(el.inputMode.value) === InputMode.Message);
+}
+
 function sendPing() {
   if (state.conn?.isAuthenticated) state.conn.send(Channel.Control, ControlType.Ping, buildPing(Date.now()));
 }
@@ -328,6 +344,7 @@ function selectSource(source) {
 }
 
 function renderSources() {
+  updateInputModeVisibility();
   el.sourceList.replaceChildren();
   if (!state.sources.length) {
     const li = document.createElement('li');
@@ -466,6 +483,13 @@ function init() {
   el.keyboard.addEventListener('click', () => input.openSoftKeyboard());
   try { const m = localStorage.getItem(TOUCH_MODE_KEY); if (m === 'touch' || m === 'mouse') el.touchMode.value = m; } catch { /* storage unavailable */ }
   input.setTouchMode(el.touchMode.value);
+  try { el.inputMode.value = normalizeInputMode(localStorage.getItem(INPUT_MODE_KEY)); } catch { el.inputMode.value = InputMode.SendInput; }
+  el.inputMode.addEventListener('change', () => {
+    input.releaseAll();
+    updateInputModeVisibility();
+    sendInputMode();
+    try { localStorage.setItem(INPUT_MODE_KEY, el.inputMode.value); } catch { /* storage unavailable */ }
+  });
   el.touchMode.addEventListener('change', () => {
     input.setTouchMode(el.touchMode.value);
     try { localStorage.setItem(TOUCH_MODE_KEY, el.touchMode.value); } catch { /* storage unavailable */ }

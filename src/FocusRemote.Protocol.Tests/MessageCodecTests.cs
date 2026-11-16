@@ -11,6 +11,17 @@ namespace FocusRemote.Protocol.Tests;
 public class MessageCodecTests
 {
     [Fact]
+    public void SetInputMode_RoundTripsAndRejectsMissingMode()
+    {
+        byte[] json = ControlMessages.SerializeJson(new SetInputModeMessage { Mode = SetInputModeMessage.Message });
+        Assert.Equal("""{"mode":"message"}""", System.Text.Encoding.UTF8.GetString(json));
+        Assert.True(ControlMessages.TryDeserializeJson(json, out SetInputModeMessage? back));
+        Assert.Equal("message", back!.Mode);
+        Assert.Equal(0x17, (byte)ControlType.SetInputMode);
+        Assert.False(ControlMessages.TryDeserializeJson("""{"other":1}"""u8, out SetInputModeMessage? _));
+    }
+
+    [Fact]
     public void Video_Roundtrip()
     {
         byte[] p = VideoMessages.BuildFrame(true, 123456789UL, [0, 0, 0, 1, 0x65]);

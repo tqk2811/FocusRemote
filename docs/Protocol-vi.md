@@ -79,6 +79,7 @@ Gói Sealed tới trước khi bắt tay xong thì bỏ qua.
 | `0x14` | StopStream | V→H | `{}` |
 | `0x15` | StreamStopped | H→V | `{"sourceId":"w:1234","reason":"closed"}` (cửa sổ đóng, lỗi capture…) |
 | `0x16` | RequestKeyframe | V→H | `{}` |
+| `0x17` | SetInputMode | V→H | `{"mode":"message"}`; `mode` = `sendinput` (mặc định) hoặc `message`. Chọn cách Host đưa input (§5.3) vào **nguồn cửa sổ**, giữ trong cả phiên viewer (đổi nguồn không mất). Giá trị lạ coi như `sendinput`; viewer cũ không gửi thì là `sendinput`. Viewer gửi ngay sau `AuthOk` và mỗi lần người dùng đổi |
 | `0x20` | Ping | hai chiều | `u64` mốc thời gian ms của bên gửi (không phải JSON) |
 | `0x21` | Pong | hai chiều | trả nguyên 8 byte của Ping |
 | `0x30` | Error | H→V | `{"code":"capture_failed","message":"..."}` |
@@ -102,7 +103,17 @@ Toạ độ `x`, `y` là `u16` chuẩn hoá theo khung hình đang stream: `0` =
 | `0x05` | Text | chuỗi UTF-8 (bàn phím ảo trên điện thoại) → Host gõ bằng `KEYEVENTF_UNICODE` |
 | `0x06` | ReleaseAll | rỗng – nhả mọi phím/nút đang giữ (viewer mất focus) |
 
-Khi xem một cửa sổ, Host đưa cửa sổ đó lên trước (`SetForegroundWindow`) trước khi gửi input nếu nó chưa ở trước.
+Chế độ `sendinput` (mặc định, và luôn dùng cho nguồn màn hình): Host dùng `SendInput`; khi xem một cửa sổ, Host đưa cửa sổ đó lên trước (`SetForegroundWindow`) trước khi gửi input nếu nó chưa ở trước.
+
+Chế độ `message` (Control `SetInputMode`, chỉ áp cho nguồn cửa sổ): Host **không** đưa cửa sổ lên trước và không đụng chuột/bàn phím thật, mà `PostMessage`:
+
+- Chuột: `WM_MOUSEMOVE`, `WM_[L|R|M|X]BUTTONDOWN/UP` tới cửa sổ con sâu nhất dưới điểm (lặp `RealChildWindowFromPoint`, bỏ group box/vùng `HTTRANSPARENT`; con trả về bị ẩn/disabled thì dùng `ChildWindowFromPointEx` bỏ con ẩn/disabled/transparent), `lParam` = toạ độ client của cửa sổ con đó; khi đang giữ nút thì gửi tiếp cho cửa sổ (và vùng) đã nhận lúc nhấn (giống capture). `wParam` = cờ `MK_*` theo nút/Shift/Ctrl đang giữ (Host tự theo dõi). `WM_MOUSEWHEEL`/`WM_MOUSEHWHEEL`: `lParam` là toạ độ **màn hình**, word cao `wParam` là delta.
+- Vùng non-client: điểm nằm ngoài vùng client của cửa sổ đích thì Host hỏi `WM_NCHITTEST` (`SendMessageTimeout` 100 ms, `SMTO_ABORTIFHUNG`; hết giờ thì coi như client). Kết quả khác `HTCLIENT`/`HTNOWHERE`/`HTTRANSPARENT`/`HTERROR` thì gửi `WM_NCMOUSEMOVE`/`WM_NC[L|R|M|X]BUTTONDOWN/UP` với `wParam` = mã hit (word cao = XBUTTON với nút X), `lParam` = toạ độ màn hình.
+- Double-click: lần nhấn thứ hai cùng nút, cùng cửa sổ, trong `GetDoubleClickTime()` và trong ô `SM_CXDOUBLECLK`×`SM_CYDOUBLECLK` quanh lần nhấn trước thành `WM_xBUTTONDBLCLK` (client: chỉ khi class có `CS_DBLCLKS`) hoặc `WM_NCxBUTTONDBLCLK` (non-client). Lần nhấn thứ ba tính lại từ đầu.
+- Phím: `WM_KEYDOWN`/`WM_KEYUP` (`WM_SYSKEYDOWN`/`UP` khi giữ Alt mà không giữ Ctrl) tới control đang focus của luồng GUI cửa sổ (`GetGUIThreadInfo().hwndFocus`, không thuộc cửa sổ thì gửi chính cửa sổ). `lParam`: repeat 1, scan code, bit 24 extended, bit 29 Alt (với SYS), bit 30 trạng thái trước, bit 31 nhả. Phím chữ/số khi đang giữ Ctrl hoặc Alt **không** được gửi `WM_KEYDOWN/UP` (app sẽ gõ ra chữ thay vì chạy phím tắt); Ctrl+chữ (không Alt) chỉ gửi `WM_CHAR` mã điều khiển `0x01`–`0x1A` (vd Ctrl+A → `0x01`), một số edit control chuẩn hiểu được.
+- Text: mỗi đơn vị UTF-16 một `WM_CHAR`; `\n` thành `WM_KEYDOWN`+`WM_CHAR '\r'`+`WM_KEYUP` của Enter. Ở chế độ này viewer gửi phím in được (giá trị `KeyboardEvent.key` một code point, không giữ Ctrl/Alt/Meta; AltGr vẫn tính là gõ) dưới dạng `Text` thay vì `Key`; chỉ phím điều khiển và tổ hợp phím đi bằng `Key`.
+- `ReleaseAll` (và khi đổi chế độ/đổi cửa sổ): gửi message nhả cho mọi nút/phím đang giữ.
+- Chỉ chạy với app đọc input từ message; app dùng raw input/DirectInput/`GetAsyncKeyState`, game, hay tiến trình chạy quyền cao hơn Host (UIPI chặn `PostMessage`) sẽ không nhận. Trạng thái phím hệ thống (`GetKeyState`) không đổi, nên **phím tắt Ctrl/Alt (Ctrl+C, Alt+F4, Ctrl+S…) có thể không chạy**. Nhấn vào vùng non-client như thanh tiêu đề/viền có thể làm `DefWindowProc` vào vòng lặp kéo/đổi cỡ theo chuột thật.
 
 ### 5.4 Audio (H→V)
 

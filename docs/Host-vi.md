@@ -14,7 +14,7 @@ App Windows chia hai tầng: `FocusRemote.Host.Core` (toàn bộ logic, không p
 | `Sources/SourceCatalog` | Liệt kê cửa sổ (`EnumWindows`) và màn hình, lấy toạ độ hiện tại để quy đổi input. |
 | `Video/VideoStreamer` | Thread riêng: `WinrtGraphicCapture` → `HardwareVideoEncoder` → Video Frame. |
 | `Audio/AudioStreamer` | Thread riêng: WASAPI loopback (`TqkLibrary.AudioCapture`) → `OpusAudioEncoder` → Audio Config + Packet. |
-| `Input/InputInjector` | `SendInput` (thật). `LoggingInputInjector` chỉ ghi log, dùng cho E2E. |
+| `Input/InputInjector` | `SendInput` (thật). Chế độ `message` (Control `SetInputMode`, chỉ nguồn cửa sổ) chuyển sang `MessageInputInjector`: `PostMessage` chuột/phím tới cửa sổ, không đưa lên trước (`WindowMessageBuilder` dựng wParam/lParam, `MessageInputState` theo dõi phím/nút đang giữ). `LoggingInputInjector` chỉ ghi log, dùng cho E2E. |
 
 ## Âm thanh
 
