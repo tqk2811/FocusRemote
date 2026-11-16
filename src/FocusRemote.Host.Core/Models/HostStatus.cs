@@ -17,4 +17,6 @@ public sealed record HostStatus
     /// <summary>Origin of the authenticated viewer; null when none.</summary>
     public string? Viewer { get; init; }
     public StreamStats? Stream { get; init; }
+    /// <summary>Open terminals of the active viewer.</summary>
+    public int TerminalCount { get; init; }
 }

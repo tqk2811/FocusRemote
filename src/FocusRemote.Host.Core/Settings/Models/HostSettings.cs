@@ -18,4 +18,7 @@ public sealed class HostSettings
     public int LanPort { get; set; } = DefaultLanPort;
 
     public bool StartWithWindows { get; set; }
+
+    /// <summary>Allow remote terminals (full command execution on this machine). Off by default.</summary>
+    public bool TerminalEnabled { get; set; }
 }

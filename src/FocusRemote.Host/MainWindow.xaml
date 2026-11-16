@@ -21,6 +21,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Label Grid.Row="0" Content="Relay URL" Target="{Binding ElementName=RelayUrlBox}" />
@@ -46,12 +47,14 @@
 
                     <CheckBox Grid.Row="5" Grid.ColumnSpan="3" x:Name="StartWithWindowsBox" Content="Khởi động cùng Windows" Margin="4,4" />
 
-                    <StackPanel Grid.Row="6" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox Grid.Row="6" Grid.ColumnSpan="3" x:Name="TerminalEnabledBox" Content="Cho phép terminal từ xa (toàn quyền chạy lệnh trên máy này)" Margin="4,4" />
+
+                    <StackPanel Grid.Row="7" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,8,0,0">
                         <Button x:Name="StartButton" Content="Lưu và bắt đầu" Padding="12,4" Click="Start_Click" IsDefault="True" />
                         <Button x:Name="StopButton" Content="Dừng" Padding="12,4" Margin="8,0,0,0" Click="Stop_Click" IsEnabled="False" />
                         <Button Content="Mở thư mục log" Padding="12,4" Margin="8,0,0,0" Click="OpenLogs_Click" />
                     </StackPanel>
-                    <TextBlock Grid.Row="7" Grid.ColumnSpan="3" x:Name="SettingsError" Foreground="Firebrick" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="8" Grid.ColumnSpan="3" x:Name="SettingsError" Foreground="Firebrick" TextWrapping="Wrap" />
                 </Grid>
             </GroupBox>
 

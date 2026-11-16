@@ -44,3 +44,9 @@ Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms
 
 ## [Thấp] Video: cửa sổ thu nhỏ lúc chọn nguồn thì viewer chờ không báo gì
 WGC không đưa khung khi cửa sổ thu nhỏ; `VideoStreamer` chờ tới khi có khung đầu mới gửi StreamStarted. Cân nhắc báo viewer (vd `IsIconic`).
+
+## [Vừa] Web viewer: terminal trên điện thoại thiếu thanh phím Ctrl/Esc/Tab/mũi tên
+Bàn phím ảo của điện thoại không có Ctrl, Esc, Tab, phím mũi tên nên khó dùng shell (vim, htop, lịch sử lệnh). Cân nhắc thêm thanh phím phụ phía trên bàn phím ảo trong panel terminal.
+
+## [Thấp] Host: terminal tự thoát lúc output đang nghẽn thì mất phần output cuối
+Shell thoát trong khi hàng đợi output > 1 MiB: luồng đọc còn chờ backpressure, waiter join hết 5 s rồi gửi Closed exited, phần output cuối bị bỏ (TerminalManager.OnOutput / PseudoConsoleProcess waiter). Cân nhắc huỷ token chờ trước khi join hoặc chờ hàng đợi rút trước khi báo exited. Kèm: Write trả false sau khi shell thoát vẫn log nhầm "input dropped (queue full)".

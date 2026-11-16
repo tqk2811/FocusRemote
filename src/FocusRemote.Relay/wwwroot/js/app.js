@@ -10,6 +10,7 @@ import { ViewerConnection } from './connection.js';
 import { VideoPlayer, detectVideoCodecs } from './video.js';
 import { AudioPlayer, detectAudioCodecs } from './audio.js';
 import { InputController } from './input.js';
+import { TerminalPanel } from './terminal.js';
 
 const STORAGE_KEY = 'focusremote.login';
 const PING_INTERVAL_MS = 2000;
@@ -28,6 +29,9 @@ const el = {
   stage: $('stage'), canvas: $('videoCanvas'), cursor: $('cursor'), stageMessage: $('stageMessage'),
   softInput: $('softInput'), overlay: $('overlay'), overlayText: $('overlayText'),
   reconnect: $('reconnectButton'), back: $('backButton'),
+  terminalButton: $('terminalButton'), terminalView: $('terminalView'), terminalTabs: $('terminalTabs'),
+  terminalNew: $('terminalNewButton'), terminalShellMenu: $('terminalShellMenu'),
+  terminalMessage: $('terminalMessage'), terminalHost: $('terminalHost'),
 };
 
 const isTouchDevice = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
@@ -76,7 +80,16 @@ const input = new InputController({
   softInput: el.softInput,
   getVideoRect: () => video.getVideoRect(),
   send: (type, payload) => state.conn?.send(Channel.Input, type, payload),
-  isActive: () => !!state.conn?.isAuthenticated && state.streaming && video.hasFrame,
+  // The terminal view owns the keyboard while visible, so remote input is suspended.
+  isActive: () => !!state.conn?.isAuthenticated && state.streaming && video.hasFrame && !terminal.visible,
+});
+const terminal = new TerminalPanel({
+  view: el.terminalView, tabs: el.terminalTabs, newButton: el.terminalNew, shellMenu: el.terminalShellMenu,
+  message: el.terminalMessage, host: el.terminalHost, toggleButton: el.terminalButton,
+  send: (type, payload) => state.conn?.send(Channel.Terminal, type, payload),
+  isConnected: () => !!state.conn?.isAuthenticated,
+  onBeforeShow: () => input.releaseAll(), // still active here: releases keys/buttons held on the remote side
+  onVisibilityChange: () => input.refreshOverlay(),
 });
 
 let lastKeyframeRequest = 0;
@@ -158,6 +171,7 @@ function startConnection() {
       onControl: (type, payload) => onControl(type, payload),
       onVideo: (type, payload) => onVideo(type, payload),
       onAudio: (type, payload) => onAudio(type, payload),
+      onTerminal: (type, payload) => terminal.handle(type, payload),
       onClosed: (info) => onClosed(conn, info),
     },
   });
@@ -174,11 +188,13 @@ function stopConnection() {
     c.close();
   }
   resetStream();
+  terminal.onDisconnect();
   state.sources = [];
   renderSources();
 }
 
 function onAuthOk(info) {
+  terminal.onConnected();
   el.hostName.textContent = info.hostName || state.credentials.id;
   setStageMessage('Chọn một cửa sổ hoặc màn hình để xem.');
   state.conn.sendControlJson(ControlType.Capabilities, {
@@ -196,6 +212,7 @@ function onClosed(conn, info) {
   clearInterval(state.pingTimer);
   state.pingTimer = 0;
   resetStream();
+  terminal.onDisconnect();
   el.latency.textContent = '– ms';
   if (info.authFailed) {
     state.credentials = null;
@@ -337,6 +354,7 @@ function renderSources() {
 // ---------- view helpers ----------
 
 function showLogin() {
+  terminal.setVisible(false);
   el.sessionView.hidden = true;
   el.loginView.hidden = false;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -422,7 +440,7 @@ function init() {
   document.addEventListener('fullscreenchange', () => input.refreshOverlay());
   window.addEventListener('pagehide', () => { input.releaseAll(); stopConnection(); });
   // Keep a reference for debugging from the console.
-  globalThis.focusRemote = { state, video, audio, input, InputType };
+  globalThis.focusRemote = { state, video, audio, input, terminal, InputType };
   // Read-only snapshot of decoder counters for debugging and the browser E2E test.
   Object.defineProperty(globalThis, '__frStats', {
     get: () => ({
@@ -441,6 +459,10 @@ function init() {
       audioPacketsReceived: audio.packetsReceived,
       audioFramesDecoded: audio.framesDecoded,
       audioDecoderErrors: audio.decoderErrors,
+      terminalVisible: terminal.visible,
+      terminalCount: terminal.count,
+      terminalOpenCount: terminal.openCount,
+      terminalEnabled: terminal.shellInfo ? terminal.shellInfo.enabled : null,
     }),
   });
 }

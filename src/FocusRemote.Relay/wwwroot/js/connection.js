@@ -27,7 +27,7 @@ export function buildViewerUrl(relayUrl, id) {
 /**
  * One viewer session. Callbacks (all optional):
  *   onStatus(text), onAuthOk(info), onControl(type, payload), onVideo(type, payload),
- *   onAudio(type, payload), onClosed({ reason, authFailed, peerLeft, wasAuthenticated }).
+ *   onAudio(type, payload), onTerminal(type, payload), onClosed({ reason, authFailed, peerLeft, wasAuthenticated }).
  */
 export class ViewerConnection {
   constructor({ relayUrl, id, rootKey, handlers }) {
@@ -149,6 +149,7 @@ export class ViewerConnection {
       case Channel.Control: this.h.onControl?.(type, payload); break;
       case Channel.Video: this.h.onVideo?.(type, payload); break;
       case Channel.Audio: this.h.onAudio?.(type, payload); break;
+      case Channel.Terminal: this.h.onTerminal?.(type, payload); break;
       default: break; // unknown channels are ignored
     }
   }

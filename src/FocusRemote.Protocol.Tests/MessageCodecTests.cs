@@ -4,6 +4,7 @@ using FocusRemote.Protocol.Messages;
 using FocusRemote.Protocol.Messages.Models;
 using FocusRemote.Protocol.Messages.Models.Control;
 using FocusRemote.Protocol.Messages.Models.Input;
+using FocusRemote.Protocol.Messages.Models.Terminal;
 
 namespace FocusRemote.Protocol.Tests;
 
@@ -117,4 +118,40 @@ public class MessageCodecTests
     [InlineData("1234567890", true)]
     [InlineData(null, false)]
     public void PasswordValidation(string? pw, bool valid) => Assert.Equal(valid, CredentialValidator.IsValidPassword(pw));
+
+    [Fact]
+    public void Terminal_BinaryPayloads()
+    {
+        byte[] data = TerminalMessages.BuildData(0x01020304, [0x6c, 0x73, 0x0d]);
+        Assert.Equal("040302016c730d", Convert.ToHexString(data).ToLowerInvariant());
+        Assert.True(TerminalMessages.TryParseData(data, out TerminalDataMessage? d));
+        Assert.Equal(0x01020304u, d!.TerminalId);
+        Assert.Equal(new byte[] { 0x6c, 0x73, 0x0d }, d.Data.ToArray());
+        Assert.True(TerminalMessages.TryParseData(new byte[4], out TerminalDataMessage? empty));
+        Assert.Equal(0, empty!.Data.Length);
+        Assert.False(TerminalMessages.TryParseData(new byte[3], out _));
+
+        byte[] resize = TerminalMessages.BuildResize(7, 120, 30);
+        Assert.Equal("0700000078001e00", Convert.ToHexString(resize).ToLowerInvariant());
+        Assert.True(TerminalMessages.TryParseResize(resize, out TerminalResizeMessage? r));
+        Assert.Equal((7u, (ushort)120, (ushort)30), (r!.TerminalId, r.Cols, r.Rows));
+        Assert.False(TerminalMessages.TryParseResize(TerminalMessages.BuildResize(7, 0, 30), out _));
+        Assert.False(TerminalMessages.TryParseResize(new byte[7], out _));
+
+        Assert.True(TerminalMessages.TryParseClose(TerminalMessages.BuildClose(9), out uint id));
+        Assert.Equal(9u, id);
+        Assert.False(TerminalMessages.TryParseClose(new byte[3], out _));
+    }
+
+    [Fact]
+    public void Terminal_Json()
+    {
+        byte[] list = ControlMessages.SerializeJson(new ShellListMessage { Enabled = true, Shells = [new ShellInfo { Id = "cmd", Name = "Command Prompt" }] });
+        Assert.Equal("""{"enabled":true,"shells":[{"id":"cmd","name":"Command Prompt"}]}""", System.Text.Encoding.UTF8.GetString(list));
+        Assert.True(ControlMessages.TryDeserializeJson("""{"terminalId":3,"shellId":"pwsh","cols":80,"rows":24}"""u8, out TerminalOpenMessage? open));
+        Assert.Equal((3u, "pwsh", 80, 24), (open!.TerminalId, open.ShellId, open.Cols, open.Rows));
+        Assert.False(ControlMessages.TryDeserializeJson("""{"terminalId":3,"cols":80,"rows":24}"""u8, out TerminalOpenMessage? _));
+        byte[] closed = ControlMessages.SerializeJson(new TerminalClosedMessage { TerminalId = 3, Reason = "exited", ExitCode = 0 });
+        Assert.Equal("""{"terminalId":3,"reason":"exited","exitCode":0,"message":null}""", System.Text.Encoding.UTF8.GetString(closed));
+    }
 }
