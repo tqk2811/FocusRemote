@@ -38,6 +38,7 @@ internal sealed class PseudoConsoleProcess : ITerminalProcess
     private long _pendingInputBytes;
     private bool _handlesClosed; // under _handleLock
     private volatile bool _disposed;
+    private volatile bool _readerInCallback;
 
     public PseudoConsoleProcess(string commandLine, string workingDirectory, int cols, int rows, ITerminalProcessListener listener)
     {
@@ -140,7 +141,8 @@ internal sealed class PseudoConsoleProcess : ITerminalProcess
 
     public bool Write(ReadOnlyMemory<byte> data)
     {
-        if (data.IsEmpty)
+        // Input for a shell that already exited (or was killed) is meaningless, not dropped for lack of room.
+        if (data.IsEmpty || Volatile.Read(ref _finished) != 0)
             return true;
         if (Interlocked.Add(ref _pendingInputBytes, data.Length) > MaxPendingInputBytes)
         {
@@ -154,7 +156,9 @@ internal sealed class PseudoConsoleProcess : ITerminalProcess
         }
         catch (InvalidOperationException)
         {
-            // Completed concurrently (the shell is ending).
+            // Completed concurrently: the shell is ending, so the input is discarded (not "queue full").
+            Interlocked.Add(ref _pendingInputBytes, -data.Length);
+            return true;
         }
         Interlocked.Add(ref _pendingInputBytes, -data.Length);
         return false;
@@ -198,8 +202,17 @@ internal sealed class PseudoConsoleProcess : ITerminalProcess
                 int read = _outputStream.Read(buffer, 0, buffer.Length);
                 if (read <= 0)
                     break;
-                if (!_disposed)
+                if (_disposed)
+                    continue;
+                _readerInCallback = true;
+                try
+                {
                     _listener.OnOutput(buffer.AsSpan(0, read));
+                }
+                finally
+                {
+                    _readerInCallback = false;
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
@@ -240,7 +253,12 @@ internal sealed class PseudoConsoleProcess : ITerminalProcess
         }
         if (console != IntPtr.Zero)
             ClosePseudoConsole(console);
-        _reader.Join(_joinTimeout);
+        // The timeout guards a reader stuck on a pipe that never reaches EOF. A reader busy in the listener (output
+        // backpressure) is still delivering: keep waiting, so the exit is reported after the last output. The
+        // listener returns early once the terminal is removed (closed, viewer gone), so this cannot wait forever.
+        while (!_reader.Join(_joinTimeout) && _readerInCallback)
+        {
+        }
         _input.CompleteAdding();
         _writer.Join(_joinTimeout);
         _inputStream.Dispose();

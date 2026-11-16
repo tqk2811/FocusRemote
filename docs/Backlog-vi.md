@@ -21,5 +21,3 @@ Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms
 ## [Thấp] Capture: viền vàng có thể vẫn hiện
 `IsBorderRequired(false)` cần quyền `GraphicsCaptureAccess` Borderless; app desktop không đóng gói có thể bị từ chối, lỗi đang bị nuốt. Cân nhắc gọi `RequestAccessAsync` và log kết quả.
 
-## [Thấp] Host: terminal tự thoát lúc output đang nghẽn thì mất phần output cuối
-Shell thoát trong khi hàng đợi output > 1 MiB: luồng đọc còn chờ backpressure, waiter join hết 5 s rồi gửi Closed exited, phần output cuối bị bỏ (TerminalManager.OnOutput / PseudoConsoleProcess waiter). Cân nhắc huỷ token chờ trước khi join hoặc chờ hàng đợi rút trước khi báo exited. Kèm: Write trả false sau khi shell thoát vẫn log nhầm "input dropped (queue full)".
