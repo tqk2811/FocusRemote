@@ -345,7 +345,8 @@ function renderSources() {
     if (s.id === state.activeSourceId) btn.classList.add('active');
     const title = document.createElement('span');
     title.className = 'title';
-    title.textContent = (s.kind === 'monitor' ? '🖥 ' : '🪟 ') // 🗔 (U+1F5D4) has no glyph on Android + (s.title || s.id);
+    // Window icon is 🪟: 🗔 (U+1F5D4) has no glyph on Android.
+    title.textContent = (s.kind === 'monitor' ? '🖥 ' : '🪟 ') + (s.title || s.id);
     const meta = document.createElement('span');
     meta.className = 'meta';
     meta.textContent = `${s.kind === 'monitor' ? 'Màn hình' : 'Cửa sổ'}${s.width && s.height ? ` · ${s.width}×${s.height}` : ''}`;
