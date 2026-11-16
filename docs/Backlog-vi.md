@@ -18,8 +18,8 @@ WebViewer mặc định tắt tiếng và bỏ gói Opus khi đang tắt, nhưng
 ## [Thấp] Audio: chưa đồng bộ hình/tiếng, gói im lặng đều đặn
 Viewer phát âm thanh theo đồng hồ AudioContext riêng (độ trễ ~60 ms), không khớp `timestampUs` với video. Khi máy im lặng Host vẫn gửi ~50 gói/s (vài byte mỗi gói) để giữ nhịp; có thể bật DTX của Opus.
 
-## [Vừa] Capture: chưa thử trên GPU Intel/AMD và laptop hybrid
-`VideoProcessor` tạo enumerator với input = cỡ encoder, còn texture capture có thể lớn hơn (vd 4K → 1080p). NVIDIA chạy tốt, driver khác có thể từ chối `CreateVideoProcessorInputView`. Nếu lỗi thì tạo enumerator theo cỡ capture. Màn hình gắn vào adapter khác adapter 0 thì WGC tự copy chéo adapter (thêm một lượt qua PCIe).
+## [Thấp] Capture: chưa thử trên GPU AMD
+`VideoProcessor` tạo enumerator với input = cỡ encoder, còn texture capture có thể lớn hơn (vd 4K → 1080p). NVIDIA và Intel UHD (laptop hybrid, ép bằng GPU preference "Power saving", 2560x1600 → 1280x720/1920x1080, h264_qsv và h264_mf zero-copy) đã chạy tốt; AMD chưa thử, driver có thể từ chối `CreateVideoProcessorInputView`. Nếu lỗi thì tạo enumerator theo cỡ capture. Màn hình gắn vào adapter khác adapter 0 thì WGC tự copy chéo adapter (thêm một lượt qua PCIe).
 
 ## [Thấp] Capture: viền vàng có thể vẫn hiện
 `IsBorderRequired(false)` cần quyền `GraphicsCaptureAccess` Borderless; app desktop không đóng gói có thể bị từ chối, lỗi đang bị nuốt. Cân nhắc gọi `RequestAccessAsync` và log kết quả.
